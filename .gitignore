@@ -1,0 +1,15 @@
+# 仮想環境とキャッシュ
+.venv/
+__pycache__/
+*.pyc
+
+# preview・run --save-png で作る確認画像（実際の利用枠が写る）
+*.png
+
+# ログ
+*.log
+
+.DS_Store
+
+# README に載せる画面の画像（preview --demo の見本の値だけ。実際の利用枠は載せない）
+!docs/images/*.png
