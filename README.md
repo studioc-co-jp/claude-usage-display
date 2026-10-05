@@ -16,6 +16,34 @@ Claude Code の利用枠 3 つ（**5 時間・週次・Fable 週次**）を、Ma
 
 どちらの画面も `preview --demo` で画像として作れます（「使い方」を参照）。
 
+## きっかけ（元の記事）
+
+nuits_jp（NAKAMURA Atsushi）さんの X の記事「[AI専用ダッシュボードの作り方](https://x.com/nuits_jp/status/2106686059509883050)」（2026-10-04）を読んで作りました。
+
+記事は、TURZX（Turing Smart Screen）の USB ディスプレイに、Claude Code・Cursor・Codex・Gemini などのトークン消費量や利用枠の残量を常時表示する「[Token Dashboard](https://github.com/nuitsjp/token-dashboard)」の作り方を紹介しています。HDMI でつなぐサブモニターと違い、ほかのウィンドウを隠さず、ほかのウィンドウに隠されることもない、という点が利点として挙げられています。
+
+## Mac で動かすまでの経緯
+
+記事の Token Dashboard（`nuitsjp/token-dashboard`、MIT、Go）は Windows 用で、Mac では使えません。同リポジトリの `docs/project.md` は、動作環境を Windows 11（x64）と TURZX 9.2 インチに限り、「Windows 以外の OS」と「TURZX 9.2インチ以外の機種」を対象外と明記しています。配布物も Windows 用のインストーラー（v0.1.6 では `token-monitor-turzx-0.1.6-amd64-setup.exe`）だけです。そこで、Mac で動く版を別に作りました。
+
+| 項目 | Token Dashboard | このリポジトリ |
+|---|---|---|
+| OS | Windows 11（x64） | macOS |
+| ディスプレイ | TURZX 9.2 インチ（1920×462、USB `1CBE:0092`） | Turing Smart Screen 3.5 インチ rev A（480×320、USB `1a86:5722`） |
+| 送り方 | WinUSB で USB バルク転送。512 バイトのヘッダー（先頭 504 バイトを DES-CBC で暗号化）と JPEG・PNG の画像 | libusb で USB バルク転送。6 バイトのコマンドと RGB565 の画素 |
+| 表示するもの | 複数の AI ツールのトークン数・推定コストと利用枠 | Claude Code の利用枠 3 つ（5 時間・週次・Fable 週次） |
+| 利用枠の取得 | 同梱の tokscale で手元から取得するか、Token Monitor の Hub から受け取る | tokscale と同じ API を直接呼ぶ |
+| 言語・配布 | Go、Windows 用インストーラー | Python、ソースのまま |
+
+作るときに、次の 4 つを解決しました。
+
+1. **ディスプレイの通信方式が違う。**このリポジトリでは 3.5 インチ（rev A）を使います。3.5 インチは 9.2 インチと通信方式がまったく違い、暗号化したヘッダーも画像ファイルも使いません。6 バイトのコマンドを送り、続けて画素を RGB565 のまま流します。Token Dashboard の送信部（`internal/turzx`）は使えないため、rev A の仕様を [turing-smart-screen-python](https://github.com/mathoudebine/turing-smart-screen-python) から読み取り、送信部を Python で書きました
+2. **macOS では画像が崩れる。**turing-smart-screen-python 自身も、macOS では画像が崩れる問題を抱えています（[issue #7](https://github.com/mathoudebine/turing-smart-screen-python/issues/7)、2022 年 2 月から open）。issue #7 で報告された原因に従い、シリアルポートを使わずに libusb で USB 転送を直接組み立てて送ることで回避しました（「仕組み」を参照）
+3. **利用枠をどこから取るか。**Token Dashboard は、手元の利用枠を同梱の [tokscale](https://github.com/junhoyeo/tokscale) で取得しています。このリポジトリは、tokscale と同じ API（`/api/oauth/usage`）を直接呼びます。tokscale には以前、アクセストークンを更新してログイン情報に書き戻した結果、Claude Code のログインが切れる不具合がありました（[#1001](https://github.com/junhoyeo/tokscale/issues/1001)、修正済み）。同じことが起きないよう、このリポジトリはログイン情報を読むだけにしています
+4. **GPL のコードを持ち込まない。**turing-smart-screen-python と、issue #7 で示された macOS 用の実装は、どちらも GPL-3.0-or-later です（各ファイルの `SPDX-License-Identifier`）。コードは流用せず、コマンド番号・バイトの並び・転送の規則といった仕様だけを使って書いています
+
+いまの状態: ディスプレイが届く前に作ったため、実機での表示はまだ試していません（2026-10-05 時点）。単体テスト、画像の生成、Keychain からの利用枠の取得、launchd での起動と待機までを、この Mac で確かめています。
+
 ## 画面のデザイン
 
 ゲージ型は、Apple のウィジェット（バッテリー）とアクティビティのリングを手本にしています。
@@ -137,7 +165,9 @@ macOS では、ディスプレイをシリアルポート（`/dev/cu.usbmodem…
 
 ## 参考にしたもの
 
-コードは流用せず、通信の仕様だけを参考にしています。
+- nuits_jp さんの X の記事「[AI専用ダッシュボードの作り方](https://x.com/nuits_jp/status/2106686059509883050)」と [nuitsjp/token-dashboard](https://github.com/nuitsjp/token-dashboard)（着想。USB ディスプレイに AI ツールの利用状況を常時表示する作り）
+
+次のものからは、コードは流用せず、通信の仕様と API の呼び方だけを参考にしています。
 
 - [mathoudebine/turing-smart-screen-python](https://github.com/mathoudebine/turing-smart-screen-python) の `library/lcd/lcd_comm_rev_a.py`（rev A のコマンド番号・コマンドの形式・画素の形式）
 - 同リポジトリの [issue #7「Screen displays corrupted images on Mac」](https://github.com/mathoudebine/turing-smart-screen-python/issues/7)と、そこで報告された [macOS 用の実装](https://gist.github.com/amarok30/cddaa9a9818d6830a74d9332f501047e)（macOS で画像が崩れる原因と回避策）
