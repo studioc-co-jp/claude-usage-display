@@ -26,7 +26,7 @@ Claude Code の利用枠 3 つ（**5 時間・週次・Fable 週次**）を、Ma
 
 2026-10-05 夕方、このディレクトリで起動したセッションが §5 の 1〜5 を終えた時点の状態。
 
-- **GitHub `blacksawa/claude-usage-display`（private）の `main` に push 済み。**2026-10-05 に作成者のメールアドレスを非公開用に書き換えるため、GitHub 上のリポジトリを作り直して push し直した（§6）
+- **GitHub `studioc-co-jp/claude-usage-display`（private）の `main` に push 済み。**2026-10-05 に作成者のメールアドレスを非公開用に書き換えるため、GitHub 上のリポジトリを作り直して push し直し、そのあと会社の組織 `studioc-co-jp` へ移した（§6）
 - **自動起動は登録済み**（2026-10-05、既定のオプション。`~/Library/LaunchAgents/jp.co.studioc.claude-usage-display.plist`）。ディスプレイが無いので `run` は待機中で、API は呼んでいない。ログは `~/Library/Logs/claude-usage-display.log`
   - 登録・オプションを変えての登録し直し・誤ったオプションの拒否・解除・強制終了後の起動し直し（約 3 秒）を実際に動かして確かめた
   - launchd から起動しても Keychain の読み取りと利用枠の取得が通ることを、`preview` を 1 回だけ動かす使い捨てのジョブで確かめた（§4-6）
@@ -35,7 +35,7 @@ Claude Code の利用枠 3 つ（**5 時間・週次・Fable 週次**）を、Ma
   - `--brightness` の範囲外（例: 150）が引数解析を通り、接続した時点で初期化の失敗を 10 秒ごとに繰り返す → 引数解析で止める
   - 取得失敗の文言のうち最長の「ログイン切れ（…）」が、時刻と合わせて右端で切れる → 理由と時刻を左右に分け、収まらないときは文字を縮める
   - 最初の取得に失敗したとき、`--model` に関係なく見出しが「Fable週次」になる → `usage.meter_labels()` で名前を 1 か所で決める
-- **`gh` のトークンからは、このリポジトリが見えない**（`gh repo view` が 404。HTTPS の `git ls-remote` は 403「Write access to repository not granted」）。`gh` のトークンは、アクセスできるリポジトリを限った fine-grained トークンである。**push は SSH の remote で行う。**`gh repo edit` などの `gh` コマンドを使うには、GitHub の設定でトークンの対象リポジトリにこのリポジトリを加える必要がある
+- **`gh` のトークンからは、このリポジトリが見えない**（組織へ移した後も `gh repo view studioc-co-jp/claude-usage-display` は「Could not resolve」。移す前は `gh repo view` が 404。HTTPS の `git ls-remote` は 403「Write access to repository not granted」）。`gh` のトークンは、アクセスできるリポジトリを限った fine-grained トークンである。**push は SSH の remote で行う。**`gh repo edit` などの `gh` コマンドを使うには、GitHub の設定でトークンの対象リポジトリにこのリポジトリを加える必要がある
 - `.venv/` は `python3 -m venv .venv && .venv/bin/pip install -r requirements.txt` で作れる（2026-10-05 に新しい venv で作り、テストが通ることを確認）
 - ディスプレイ未接続の状態で、`run` が「接続を待っています」と記録して待機し、SIGTERM で正常に終わることを確認済み
 
@@ -164,7 +164,13 @@ scripts/uninstall-launch-agent.sh                                 # 自動起動
   - このリポジトリの `user.email` は非公開用アドレス `75772838+blacksawa@users.noreply.github.com` にした（`git config --local`。全体の設定は変えていない）。形式は GitHub の文書「Email addresses reference」の「Your noreply email address」（2017-07-18 より後に作ったアカウントは `ID+USERNAME@users.noreply.github.com`。`blacksawa` は 2020-12-10 作成、ID 75772838）
   - 既存の commit は `git filter-repo --mailmap` で書き換えた（日時とツリーは変わらない。`origin` の設定が消えるので登録し直した）。この文書の中に書いていたアドレスも `git filter-repo --replace-text` で履歴から消した。**個人のアドレスを、ファイルにも commit メッセージにも書かない**
   - 強制 push では古い commit が GitHub に残る（「Removing sensitive data from a repository」に、SHA-1 を指定すればキャッシュから見られると書かれている。GitHub Support は機微でないデータの削除に応じない）。そのため **GitHub 上のリポジトリを削除して作り直し、書き換えた履歴を push した**（2026-10-05。作り直しはユーザーが GitHub の画面で行った）
+- **リポジトリは会社の GitHub 組織 `studioc-co-jp`（表示名 studio C）に置く**（2026-10-05 ユーザーが決定・作成）
+  - 理由: LICENSE の名義が会社で、記事も studioc.co.jp に載せるため。GitHub の規約（Terms of Service「A. Definitions」）で、組織は「1 つの法人に結び付けられる共有の作業場所」とされる。会社名義の個人アカウントを別に作るのは、「1 人または 1 法人が持てる無料のアカウントは 1 つまで」「1 つのログインを複数の人で共有しない」に合わない。commit の作成者は書いた個人（`blacksawa` の非公開用アドレス）のままでよい
+  - 組織は Free プラン。所有者は「A business or institution」（株式会社studio C）を選び、GitHub Customer Agreement を会社として結んだ（文書「Upgrading to the GitHub Customer Agreement」によると、標準の利用規約は個人との契約、Customer Agreement は団体としての契約）
+  - ドメイン studioc.co.jp を認証済み（Cloudflare の DNS に TXT レコード `_gh-studioc-co-jp-o` を追加。組織の API で `is_verified: true`）。印が付いた後は TXT レコードを消してよい（文書「Verifying or approving a domain for your organization」）
+  - `blacksawa/claude-usage-display` から Transfer ownership で移した。古い URL からは自動で転送されるが、古い場所に同じ名前のリポジトリを作ると転送は消える（文書「Transferring a repository」）。記事には組織側の URL を載せる
+  - 組織名の `studioc` と `studio-c` は、無関係の第三者が使っている（2017 年作成の個人アカウントと、ラスベガスの組織「Studio C」）
 - ライセンスは **MIT**、著作権者は **株式会社studio C**（2026-10-05 ユーザーが決定。`LICENSE` の本文は GitHub の Licenses API の `mit` から作成）
 - 履歴にトークンや API の生の応答が入っていないこと（2026-10-05 の初回 commit の前に、トークンらしき文字列・個人のパス・fixture の項目を検査済み）
-- 公開範囲の変更は、`gh` のトークンをこのリポジトリに広げてから `gh repo edit blacksawa/claude-usage-display --visibility public --accept-visibility-change-consequences` で行う。GitHub の画面から変えてもよい
+- 公開範囲の変更は、`gh` のトークンをこのリポジトリに広げてから `gh repo edit studioc-co-jp/claude-usage-display --visibility public --accept-visibility-change-consequences` で行う。GitHub の画面から変えてもよい
 - フォント: 画面は macOS に入っているフォント（SF Pro Rounded・ヒラギノ角ゴシック）で描く。リポジトリにはフォントのファイルを含めず、`/System/Library/Fonts/` のパスで参照するだけである。macOS の使用許諾契約（この Mac の `/Library/Documentation/License.lpdf`、日本語版 2 条 E「フォント」）は「Apple ソフトウェアの実行中にコンテンツを表示およびプリントするために、Apple ソフトウェアに含まれるフォントを使用することができます」「当該フォントに付属する埋め込み制限で許可されている場合のみ、コンテンツ内にフォントを埋め込むことができます」と定める。このプログラムは、macOS 上で実行中にこれらのフォントで画面を描き、ディスプレイに表示する。README・記事に載せる画像は描いた結果の画素で、フォントのデータは含まない

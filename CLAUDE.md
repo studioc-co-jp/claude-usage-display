@@ -1,7 +1,8 @@
 # claude-usage-display
 
 Claude Code の利用枠（5 時間・週次・Fable 週次）を、USB でつないだ 3.5 インチのディスプレイ（Turing Smart Screen rev A、`1a86:5722`）に表示する常駐プログラム。
-概要と使い方は `README.md`、経緯・調べた事実（出典つき）・残っている作業は `docs/handover.md` にある。**作業を始める前に `docs/handover.md` の §5 を読む。**
+概要と使い方は `README.md`、経緯・調べた事実（出典つき）・残っている作業は `docs/handover.md` にある。
+リポジトリは会社の GitHub 組織に置いている（`git@github.com:studioc-co-jp/claude-usage-display.git`、private）。**作業を始める前に `docs/handover.md` の §5 を読む。**
 
 ## 規則
 
