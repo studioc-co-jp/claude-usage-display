@@ -154,7 +154,14 @@ scripts/uninstall-launch-agent.sh                                 # 自動起動
 
 ## 6. 公開するときに確かめること
 
-- リポジトリを public にするなら、その前にライセンスを決める（いまは LICENSE ファイルが無い）
+- **認証の扱い（2026-10-05 に調査。公開の可否を左右する）**: このツールは、Claude Code が Keychain に置いた OAuth のアクセストークンを読み、文書化されていない `/api/oauth/usage` を呼ぶ。Claude Code の「Legal and compliance」（https://code.claude.com/docs/en/legal-and-compliance 、「Authentication and credential use」）は次のように定める
+  - OAuth 認証は、サブスクリプションの購入者が Claude Code と Anthropic 純正のアプリを普通に使うためのもの（"designed to support ordinary use of Claude Code and other native Anthropic applications"）
+  - 製品やサービスを作る開発者は API キーを使う。第三者の開発者が、Free・Pro・Max の資格情報で利用者の代わりにリクエストを流すことは認めない。開発者は Claude.ai の資格情報やセッショントークンを収集・保存・仲介してはならない
+  - Anthropic は、これらの制限を予告なく執行できる（"may do so without prior notice"）。用途ごとの可否は sales への問い合わせを案内している
+  - このツールは、利用者本人の Mac で本人のトークンを読むだけで、保存も他人への提供もしない。ただし、Anthropic 純正ではないアプリが OAuth のトークンを使う点について、上の文書は許可も禁止も明示していない
+  - 公式に渡される別の経路がある: ステータスラインのスクリプトに渡る JSON の `rate_limits.five_hour` / `rate_limits.seven_day`（`used_percentage` と `resets_at`）。https://code.claude.com/docs/en/statusline の「Rate limit usage」。**モデル別の週次（Fable 週次）は含まれない。**Claude Code のセッションが動いているあいだだけ更新される（`refreshInterval` で定期的に更新できる）
+- GitHub のユーザー `blacksawa` の公開リポジトリは 0 件（2026-10-05、認証なしの API で確認）。public にすれば、commit の作成者欄のメールアドレス（個人のアドレス）が初めて公開される。GitHub の noreply アドレスに書き換えるなら、public にする前に行う
+- リポジトリを public にするなら、その前にライセンスを決める（いまは LICENSE ファイルが無い。着想元の token-dashboard は MIT）
 - 履歴にトークンや API の生の応答が入っていないこと（2026-10-05 の初回 commit の前に、トークンらしき文字列・個人のパス・fixture の項目を検査済み）
 - 公開範囲の変更は、`gh` のトークンをこのリポジトリに広げてから `gh repo edit blacksawa/claude-usage-display --visibility public --accept-visibility-change-consequences` で行う。GitHub の画面から変えてもよい
 - フォント: 画面は macOS に入っているフォント（SF Pro Rounded・ヒラギノ角ゴシック）で描く。リポジトリにはフォントのファイルを含めず、`/System/Library/Fonts/` のパスで参照するだけである。macOS の使用許諾契約（この Mac の `/Library/Documentation/License.lpdf`、日本語版 2 条 E「フォント」）は「Apple ソフトウェアの実行中にコンテンツを表示およびプリントするために、Apple ソフトウェアに含まれるフォントを使用することができます」「当該フォントに付属する埋め込み制限で許可されている場合のみ、コンテンツ内にフォントを埋め込むことができます」と定める。このプログラムは、macOS 上で実行中にこれらのフォントで画面を描き、ディスプレイに表示する。README・記事に載せる画像は描いた結果の画素で、フォントのデータは含まない
