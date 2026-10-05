@@ -148,14 +148,66 @@ scripts/uninstall-launch-agent.sh                                 # 自動起動
 
 1〜5 は 2026-10-05 に終えた（README.md、CLAUDE.md、requirements.txt と .gitignore、自動起動の作成と登録、git の初期化と push）。
 
-6. **ディスプレイが届いたら**（外部要因。到着が再開の条件）
-   1. **先に自動起動を止める**（`scripts/uninstall-launch-agent.sh`）。登録したままつなぐと、常駐の `run` がすぐに送信を始め、`probe`・`test-pattern` と同じパネルへ同時に書くことになる。パネルは画素を数えながら受け取るので、2 つのプロセスが書くと画面が崩れる（§4-3）
-   2. USB-C でつなぎ、`system_profiler SPUSBHostDataType | grep -B8 -A2 'USB Product ID: 0x5722'` で `1a86:5722` と**シリアル番号 `USB35INCHIPSV2`** が見えるかを確かめる。別の ID なら rev A ではないので、§4-3・§4-4 の前提から見直す。**ID が同じでもシリアルが `2017-2-25` なら XuanFang の rev B で、通信方式が違う**（`lcd_comm_rev_b.py` 75・77 行目。rev A は同 72・74 行目）。`turing.py` はシリアルを見ずに ID だけで開くので、この確認は `probe` より前に手で行う（`probe` も `serial_number` を表示する）
-   3. `probe` で、インターフェース 1 を確保できるかを確かめる。macOS の CDC ドライバーが握っていて確保できない場合は、その時のエラーをもとに対処を調べる（gist の報告者は確保できている）
-   4. `test-pattern` で向きと色を確かめる。上下が逆なら `--flip` を付ける。赤と青が入れ替わっていたら RGB565 の並びを見直す
-   5. `run --save-png /tmp/last.png` を数分動かし、画面と保存画像が一致することを確かめる。ゲージ型の細部（リングの縁、灰色の文字の読みやすさ、カードの面と黒地の差）を実機で見て、ユーザーに見てもらう。合わなければ `--theme classic` と見比べる
-   6. 自動起動を登録し直す（上下が逆なら `scripts/install-launch-agent.sh --flip`）。ログアウト・ログインのあとも表示されることを確かめる
-7. 実機で分かったこと（確保の可否、向き、明るさ、転送にかかる時間、ゲージ型の見え方）を、§4 に追記する
+6. **ディスプレイが届いたら**（外部要因。到着が再開の条件）。作業はすべて `~/projects/claude-usage-display` で行う。画面を見て判断する段階は、ユーザーに見てもらう
+   1. **つなぐ前に、自動起動を止める**: `scripts/uninstall-launch-agent.sh`（「停止しました」「解除しました」と出る）。登録したままつなぐと、常駐の `run` がすぐ送信を始め、確認用のコマンドと同じパネルへ同時に書く。パネルは画素を数えながら受け取るので、2 つのプロセスが書くと画面が崩れる（§4-3）
+   2. **つないで機種を確かめる**: USB-C でつなぎ、`system_profiler SPUSBHostDataType | grep -B8 -A2 'USB Product ID: 0x5722'` を実行する。`USB Vendor ID: 0x1a86`・`USB Product ID: 0x5722`・`Serial Number: USB35INCHIPSV2` が出れば rev A
+      - 何も出なければ、ケーブルがデータ通信に対応しているかを確かめる。別の ID なら rev A ではないので、§4-3・§4-4 の前提から見直す
+      - **ID が同じでもシリアルが `2017-2-25` なら XuanFang の rev B** で、通信方式が違う（`lcd_comm_rev_b.py` 75・77 行目）。この場合は先へ進まない。`turing.py` はシリアルを見ずに ID だけで開くため
+   3. **インターフェースを確保できるか**: `.venv/bin/python -m claude_usage_display probe`。最後に「インターフェースを確保できました」と出れば次へ。確保できない場合は、表示されたエラーをそのまま記録し、それをもとに対処を調べる。シリアル（`/dev/cu.usbmodem…`）での送信に切り替えない（§4-3。gist の報告者は確保できている）
+   4. **向きと色**: `.venv/bin/python -m claude_usage_display test-pattern`。正しければ、左上が赤で「左上」、右上が緑で「緑」、左下が青で「青」、右下が白、中央に「480×320」が出る
+      - 上下が逆なら `test-pattern --flip` で確かめ直す。以降のコマンドにも `--flip` を付ける
+      - 赤と青が入れ替わっていたら、`turing.py` の `to_rgb565le` の並びを見直す
+   5. **1 画面の転送時間を測る**（記事の素材）。次を実行する（2026-10-05 に、未接続の検出まで動くことを確認済み。上下が逆なら `TuringRevA(UsbTransport.open(), flipped=True)` にする）
+      ```
+      .venv/bin/python - <<'EOF'
+      import time
+
+      from claude_usage_display.render import render_test_pattern
+      from claude_usage_display.turing import DeviceNotFound, TuringRevA, UsbTransport, to_rgb565le
+
+      frame = to_rgb565le(render_test_pattern())
+      try:
+          display = TuringRevA(UsbTransport.open())
+      except DeviceNotFound as e:
+          print(f"未接続の検出まで動作: {e}")
+          raise SystemExit(0)
+      try:
+          display.initialize(30)
+          times = []
+          for _ in range(5):
+              start = time.perf_counter()
+              display.show_frame(frame)
+              times.append((time.perf_counter() - start) * 1000)
+          print("1 画面の転送: " + " / ".join(f"{t:.0f}" for t in times) + " ミリ秒")
+      finally:
+          display.close()
+      EOF
+      ```
+   6. **実際の画面を数分動かす**: `.venv/bin/python -m claude_usage_display run --save-png /tmp/claude-usage-last.png`（Ctrl+C で終了）。画面と保存した画像が一致することを確かめる。ユーザーに次を見てもらう
+      - ゲージ型の細部: リングの縁、灰色の文字の読みやすさ、カードの面と黒地の差
+      - 明るさ: 既定は 30。`--brightness 20`・`--brightness 50` などで見比べる
+      - 合わなければ `--theme classic` と見比べる
+      - 記事用の写真は、実際の利用枠が写らないよう、見本の値（26%・74%・93%）の画面を送ってから撮る。`run` を止めてから次を実行する（2026-10-05 に、未接続の検出まで動くことを確認済み。上下が逆なら `flipped=True` を付ける）
+        ```
+        .venv/bin/python - <<'EOF'
+        from datetime import datetime, timezone
+
+        from claude_usage_display import gauge
+        from claude_usage_display.__main__ import _demo_snapshot
+        from claude_usage_display.turing import TuringRevA, UsbTransport
+
+        now = datetime.now(timezone.utc)
+        display = TuringRevA(UsbTransport.open())
+        try:
+            display.initialize(30)
+            display.show(gauge.render(_demo_snapshot(now, "Fable"), now))
+        finally:
+            display.close()
+        EOF
+        ```
+   7. **自動起動を登録し直す**: `scripts/install-launch-agent.sh`。手順 4・6 で決めたオプションがあれば付ける（例: `scripts/install-launch-agent.sh --flip --brightness 40`）。ログアウトしてログインし直したあとも表示されることと、`~/Library/Logs/claude-usage-display.log` に「ディスプレイに接続しました」が出ることを確かめる
+7. **実機で分かったことを書き残す**: 確保の可否、向き、色、明るさ、転送時間、ゲージ型の見え方、写真を、`docs/article-material.md` §10 に書く。作業の判断に関わること（エラーと対処など）は、この文書の §4 にも追記する
+8. **公開と記事**: §6 の「認証の扱い」を決める → 必要なら実装を直す → リポジトリを public にする → `~/projects/studioc` で起動したセッションが `/techblog-write` で記事を書く（素材は `docs/article-material.md`）
 
 ## 6. 公開するときに確かめること
 
