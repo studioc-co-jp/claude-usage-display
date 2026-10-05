@@ -13,6 +13,7 @@ Claude Code の利用枠（5 時間・週次・Fable 週次）を、USB でつ�
 - macOS ではシリアル（`/dev/cu.usbmodem…`）で送らない。`claude_usage_display/turing.py` の docstring にある 4 つの規則（コマンドは 1 転送ずつ・`SET_ORIENTATION` は 11 バイト・画素は 64 バイトの倍数で区切る・画素の途中にほかを書かない）を崩さない
 - 記事はこのリポジトリに置かない。`~/projects/studioc` で起動したセッションが `/techblog-write` で書く。素材（調べた事実と出典、実機で分かったこと）は `docs/` に残す
 - commit は `git commit --only -m "…" -- <パス>` で行う。新規ファイルは先に `git add <そのパス>`。`git add -A` / `git add .` は使わない（hook が止める）
+- **commit の作成者のメールアドレスは、GitHub の非公開用アドレスにする。**このリポジトリだけ `git config --local user.email "75772838+blacksawa@users.noreply.github.com"` を設定してある（clone し直したら設定し直す）。commit の前に `git config user.email` を確かめる。個人のメールアドレスは、ファイルにも commit メッセージにも書かない（2026-10-05 に履歴を書き換えて消した。経緯は `docs/handover.md` §6）
 
 ## 開発
 
