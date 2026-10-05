@@ -172,3 +172,7 @@ macOS では、ディスプレイをシリアルポート（`/dev/cu.usbmodem…
 - [mathoudebine/turing-smart-screen-python](https://github.com/mathoudebine/turing-smart-screen-python) の `library/lcd/lcd_comm_rev_a.py`（rev A のコマンド番号・コマンドの形式・画素の形式）
 - 同リポジトリの [issue #7「Screen displays corrupted images on Mac」](https://github.com/mathoudebine/turing-smart-screen-python/issues/7)と、そこで報告された [macOS 用の実装](https://gist.github.com/amarok30/cddaa9a9818d6830a74d9332f501047e)（macOS で画像が崩れる原因と回避策）
 - [junhoyeo/tokscale](https://github.com/junhoyeo/tokscale) の `crates/tokscale-cli/src/commands/usage/claude.rs`（利用枠 API の呼び方）
+
+## ライセンス
+
+[MIT License](LICENSE)（Copyright (c) 2026 株式会社studio C）

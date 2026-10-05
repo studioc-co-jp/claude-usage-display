@@ -160,8 +160,11 @@ scripts/uninstall-launch-agent.sh                                 # 自動起動
   - Anthropic は、これらの制限を予告なく執行できる（"may do so without prior notice"）。用途ごとの可否は sales への問い合わせを案内している
   - このツールは、利用者本人の Mac で本人のトークンを読むだけで、保存も他人への提供もしない。ただし、Anthropic 純正ではないアプリが OAuth のトークンを使う点について、上の文書は許可も禁止も明示していない
   - 公式に渡される別の経路がある: ステータスラインのスクリプトに渡る JSON の `rate_limits.five_hour` / `rate_limits.seven_day`（`used_percentage` と `resets_at`）。https://code.claude.com/docs/en/statusline の「Rate limit usage」。**モデル別の週次（Fable 週次）は含まれない。**Claude Code のセッションが動いているあいだだけ更新される（`refreshInterval` で定期的に更新できる）
-- GitHub のユーザー `blacksawa` の公開リポジトリは 0 件（2026-10-05、認証なしの API で確認）。public にすれば、commit の作成者欄のメールアドレス（個人のアドレス）が初めて公開される。GitHub の noreply アドレスに書き換えるなら、public にする前に行う
-- リポジトリを public にするなら、その前にライセンスを決める（いまは LICENSE ファイルが無い。着想元の token-dashboard は MIT）
+- **commit の作成者欄のメールアドレスは公開しない**（2026-10-05 ユーザーが決定）。GitHub のユーザー `blacksawa` の公開リポジトリは 0 件（認証なしの API で確認）で、public にすれば 個人のアドレス が初めて公開されるため
+  - このリポジトリの `user.email` は非公開用アドレス `75772838+blacksawa@users.noreply.github.com` にした（`git config --local`。全体の設定は変えていない）。形式は GitHub の文書「Email addresses reference」の「Your noreply email address」（2017-07-18 より後に作ったアカウントは `ID+USERNAME@users.noreply.github.com`。`blacksawa` は 2020-12-10 作成、ID 75772838）
+  - 既存の commit は `git filter-repo --mailmap` で書き換える（写しで試験済み。日時とツリーは変わらず、`origin` の設定が消えるので登録し直す）
+  - 強制 push では古い commit が GitHub に残る（「Removing sensitive data from a repository」に、SHA-1 を指定すればキャッシュから見られると書かれている。GitHub Support は機微でないデータの削除に応じない）。そのため **GitHub 上のリポジトリを削除して作り直し、書き換えた履歴を push する**
+- ライセンスは **MIT**、著作権者は **株式会社studio C**（2026-10-05 ユーザーが決定。`LICENSE` の本文は GitHub の Licenses API の `mit` から作成）
 - 履歴にトークンや API の生の応答が入っていないこと（2026-10-05 の初回 commit の前に、トークンらしき文字列・個人のパス・fixture の項目を検査済み）
 - 公開範囲の変更は、`gh` のトークンをこのリポジトリに広げてから `gh repo edit blacksawa/claude-usage-display --visibility public --accept-visibility-change-consequences` で行う。GitHub の画面から変えてもよい
 - フォント: 画面は macOS に入っているフォント（SF Pro Rounded・ヒラギノ角ゴシック）で描く。リポジトリにはフォントのファイルを含めず、`/System/Library/Fonts/` のパスで参照するだけである。macOS の使用許諾契約（この Mac の `/Library/Documentation/License.lpdf`、日本語版 2 条 E「フォント」）は「Apple ソフトウェアの実行中にコンテンツを表示およびプリントするために、Apple ソフトウェアに含まれるフォントを使用することができます」「当該フォントに付属する埋め込み制限で許可されている場合のみ、コンテンツ内にフォントを埋め込むことができます」と定める。このプログラムは、macOS 上で実行中にこれらのフォントで画面を描き、ディスプレイに表示する。README・記事に載せる画像は描いた結果の画素で、フォントのデータは含まない
