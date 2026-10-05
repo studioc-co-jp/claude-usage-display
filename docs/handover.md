@@ -152,7 +152,13 @@ scripts/uninstall-launch-agent.sh                                 # 自動起動
    1. **つなぐ前に、自動起動を止める**: `scripts/uninstall-launch-agent.sh`（「停止しました」「解除しました」と出る）。登録したままつなぐと、常駐の `run` がすぐ送信を始め、確認用のコマンドと同じパネルへ同時に書く。パネルは画素を数えながら受け取るので、2 つのプロセスが書くと画面が崩れる（§4-3）
    2. **つないで機種を確かめる**: USB-C でつなぎ、`system_profiler SPUSBHostDataType | grep -B8 -A2 'USB Product ID: 0x5722'` を実行する。`USB Vendor ID: 0x1a86`・`USB Product ID: 0x5722`・`Serial Number: USB35INCHIPSV2` が出れば rev A
       - 何も出なければ、ケーブルがデータ通信に対応しているかを確かめる。別の ID なら rev A ではないので、§4-3・§4-4 の前提から見直す
-      - **ID が同じでもシリアルが `2017-2-25` なら XuanFang の rev B** で、通信方式が違う（`lcd_comm_rev_b.py` 75・77 行目）。この場合は先へ進まない。`turing.py` はシリアルを見ずに ID だけで開くため
+      - **ID が同じでもシリアルが `2017-2-25` なら XuanFang の rev B** で、通信方式が違う（`lcd_comm_rev_b.py` 75・77 行目）。rev A 用の以降の手順には進まない（`turing.py` はシリアルを見ずに ID だけで開き、rev A の命令を送るため）。rev B の通信方式を `turing.py` に足してから進める。違いは次のとおり（いずれも `lcd_comm_rev_b.py`）
+        - 命令は 10 バイト（先頭と末尾にコマンド番号、中に 8 バイト。82〜99 行目）。番号は HELLO 0xCA・SET_ORIENTATION 0xCB・DISPLAY_BITMAP 0xCC・SET_LIGHTING 0xCD・SET_BRIGHTNESS 0xCE（29〜34 行目）
+        - 最初に HELLO を送り、10 バイトの応答で型番の細分（A01・A02・A11・A12）を判定する（105〜139 行目）。rev A と違い、応答を読む
+        - 明るさは A11・A12 が 0〜255 で 255 が最も明るい（rev A と逆）。A01・A02 はオンかオフだけ（45〜49・168〜179 行目）
+        - 向きはパネルが縦と横だけを持ち、上下逆はソフトで 180 度回す（189〜197 行目）
+        - 画素は RGB565 のビッグエンディアン（203 行目）。幅×8 バイトずつ送り、送り終えたら 0.05 秒あける（249〜259 行目）
+        - macOS: rev B 系（flagship）は、ライブラリの送信の競合を直して間を置くと安定したという報告がある（issue #7、gerph、2022-09-01、PR #34）。libusb で直接書く方式が rev B でも要るかの報告は無いので、実機で確かめながら作る
    3. **インターフェースを確保できるか**: `.venv/bin/python -m claude_usage_display probe`。最後に「インターフェースを確保できました」と出れば次へ。確保できない場合は、表示されたエラーをそのまま記録し、それをもとに対処を調べる。シリアル（`/dev/cu.usbmodem…`）での送信に切り替えない（§4-3。gist の報告者は確保できている）
    4. **向きと色**: `.venv/bin/python -m claude_usage_display test-pattern`。正しければ、左上が赤で「左上」、右上が緑で「緑」、左下が青で「青」、右下が白、中央に「480×320」が出る
       - 上下が逆なら `test-pattern --flip` で確かめ直す。以降のコマンドにも `--flip` を付ける

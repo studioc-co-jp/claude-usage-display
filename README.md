@@ -61,7 +61,7 @@ nuits_jp（NAKAMURA Atsushi）さんの X の記事「[AI専用ダッシュボ�
 | Mac | macOS。Homebrew が使えること |
 | Claude Code | Claude のサブスクリプション（Pro・Max）でログインしていること。動作を確かめたのは Max（5x）です |
 
-同じ 3.5 インチでも、XuanFang の rev B は USB の ID が同じ `1a86:5722` で、シリアル番号（`2017-2-25`）だけが違います。rev B は通信方式が違うため動きません。Turing の 2.1・2.8・5・8 インチ（rev C）や、Kipye の 3.5 インチ（rev D）は USB の ID から違い、これも動きません（機種の区分は turing-smart-screen-python の `library/lcd/lcd_comm_rev_*.py` によります）。
+同じ 3.5 インチでも、XuanFang の rev B は USB の ID が同じ `1a86:5722` で、シリアル番号（`2017-2-25`）だけが違います。rev B は通信方式（命令の形、画素のバイト順など）が違い、このプログラムは rev A の通信方式だけを実装しているため、そのままでは動きません。Turing の 2.1・2.8・5・8 インチ（rev C）や、Kipye の 3.5 インチ（rev D）は USB の ID から違い、これも動きません（機種の区分は turing-smart-screen-python の `library/lcd/lcd_comm_rev_*.py` によります）。
 
 USB の ID とシリアル番号は、つないだ状態で次のコマンドで確かめられます（`USB Vendor ID: 0x1a86`、`USB Product ID: 0x5722`、`Serial Number: USB35INCHIPSV2` が出れば対象です）。
 
