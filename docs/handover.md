@@ -35,7 +35,11 @@ Claude Code の利用枠 3 つ（**5 時間・週次・Fable 週次**）を、Ma
   - `--brightness` の範囲外（例: 150）が引数解析を通り、接続した時点で初期化の失敗を 10 秒ごとに繰り返す → 引数解析で止める
   - 取得失敗の文言のうち最長の「ログイン切れ（…）」が、時刻と合わせて右端で切れる → 理由と時刻を左右に分け、収まらないときは文字を縮める
   - 最初の取得に失敗したとき、`--model` に関係なく見出しが「Fable週次」になる → `usage.meter_labels()` で名前を 1 か所で決める
-- **`gh` のトークンからは、このリポジトリが見えない**（組織へ移した後も `gh repo view studioc-co-jp/claude-usage-display` は「Could not resolve」。移す前は `gh repo view` が 404。HTTPS の `git ls-remote` は 403「Write access to repository not granted」）。`gh` のトークンは、アクセスできるリポジトリを限った fine-grained トークンである。**push は SSH の remote で行う。**`gh repo edit` などの `gh` コマンドを使うには、GitHub の設定でトークンの対象リポジトリにこのリポジトリを加える必要がある
+- **`gh` は、この組織のリポジトリ専用のトークンを `GH_TOKEN` で渡して使う。**保存済みの `gh` のログイン（`blacksawa` の fine-grained トークン、キーチェーン）は、持ち主が `blacksawa` なので組織のリポジトリは見えない（1 つのトークンが使えるのは 1 人か 1 つの組織の持ち物だけ。GitHub の文書「Managing your personal access tokens」）。ほかのセッションもそのログインを使うので、`gh auth login` で入れ替えない
+  - 組織用のトークン: 持ち主 `studioc-co-jp`、対象は `claude-usage-display` だけ、権限は Administration（読み書き）と Contents（読み取り）、期限 90 日（2026-10-05 作成）。キーチェーンの項目 `gh-token-studioc-co-jp`（アカウント `blacksawa`）に入れてある
+  - 使い方: `GH_TOKEN=$(security find-generic-password -s gh-token-studioc-co-jp -w) gh repo view studioc-co-jp/claude-usage-display`。2026-10-05 にこの形で読み取りと、Administration の権限が要る読み取り（デプロイキーの一覧）が通ることを確かめた
+  - 期限が切れたら、同じ条件で作り直し、`security add-generic-password -U -a blacksawa -s gh-token-studioc-co-jp -w` で入れ替える
+  - **push は SSH の remote で行う**（`git@github.com:studioc-co-jp/claude-usage-display.git`）
 - `.venv/` は `python3 -m venv .venv && .venv/bin/pip install -r requirements.txt` で作れる（2026-10-05 に新しい venv で作り、テストが通ることを確認）
 - ディスプレイ未接続の状態で、`run` が「接続を待っています」と記録して待機し、SIGTERM で正常に終わることを確認済み
 
@@ -172,5 +176,5 @@ scripts/uninstall-launch-agent.sh                                 # 自動起動
   - 組織名の `studioc` と `studio-c` は、無関係の第三者が使っている（2017 年作成の個人アカウントと、ラスベガスの組織「Studio C」）
 - ライセンスは **MIT**、著作権者は **株式会社studio C**（2026-10-05 ユーザーが決定。`LICENSE` の本文は GitHub の Licenses API の `mit` から作成）
 - 履歴にトークンや API の生の応答が入っていないこと（2026-10-05 の初回 commit の前に、トークンらしき文字列・個人のパス・fixture の項目を検査済み）
-- 公開範囲の変更は、`gh` のトークンをこのリポジトリに広げてから `gh repo edit studioc-co-jp/claude-usage-display --visibility public --accept-visibility-change-consequences` で行う。GitHub の画面から変えてもよい
+- 公開範囲の変更は `GH_TOKEN=$(security find-generic-password -s gh-token-studioc-co-jp -w) gh repo edit studioc-co-jp/claude-usage-display --visibility public --accept-visibility-change-consequences` で行う（§3 の組織用のトークン）。GitHub の画面から変えてもよい
 - フォント: 画面は macOS に入っているフォント（SF Pro Rounded・ヒラギノ角ゴシック）で描く。リポジトリにはフォントのファイルを含めず、`/System/Library/Fonts/` のパスで参照するだけである。macOS の使用許諾契約（この Mac の `/Library/Documentation/License.lpdf`、日本語版 2 条 E「フォント」）は「Apple ソフトウェアの実行中にコンテンツを表示およびプリントするために、Apple ソフトウェアに含まれるフォントを使用することができます」「当該フォントに付属する埋め込み制限で許可されている場合のみ、コンテンツ内にフォントを埋め込むことができます」と定める。このプログラムは、macOS 上で実行中にこれらのフォントで画面を描き、ディスプレイに表示する。README・記事に載せる画像は描いた結果の画素で、フォントのデータは含まない
