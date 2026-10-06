@@ -6,7 +6,7 @@ Claude Code の利用枠（5 時間・週次・Fable 週次）を、USB でつ�
 
 ## 規則
 
-- 全体の規則は `~/.claude/CLAUDE.md`（GitHub `blacksawa/studioc-claude-config`）に従う。ユーザーに見える文章は日本語・です/ます調で書く。README・コメント・ログの文言も日本語で書く
+- 全体の規則は `~/.claude/CLAUDE.md`（GitHub `studioc-co-jp/studioc-claude-config`）に従う。ユーザーに見える文章は日本語・です/ます調で書く。README・コメント・ログの文言も日本語で書く
 - **アクセストークンを画面・ログ・ファイル・commit に出さない。**例外の文言やデバッグ出力にも入れない。値を示す必要があるときは長さかマスク済みの形にする
 - **Keychain のログイン情報（`Claude Code-credentials`）は読むだけで書かない。**リフレッシュトークンも使わない。更新結果を書き戻すと Claude Code のログインが壊れる（junhoyeo/tokscale #1001）
 - 利用枠 API の生の応答をリポジトリに入れない。fixtures には使う項目だけを残す。トップレベルにある用途不明の項目（社内コード名に見える名前）は、fixtures にも記事にも載せない
