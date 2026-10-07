@@ -42,6 +42,14 @@ Claude Code の利用枠 3 つ（5 時間・週次・Fable 週次）を、Mac �
 - 配布物は Windows 用のインストーラーだけです（v0.1.6、`token-monitor-turzx-0.1.6-amd64-setup.exe`、2026-10-04）
 - 利用枠は、同梱した tokscale で取得します（同 18 行目）
 
+### 4-1-2. メーカーの公式ソフトも Windows 専用（2026-10-07 に調査）
+
+- TURZX の公式サイト（https://www.turzx.com/en/ ）の製品一覧では、8 機種すべての対応 OS が Windows です。3.5 インチは「SYSTEM: Windows 7-11」、ほかの 7 機種は「Windows 10, 11」です
+- 3.5 インチ用のソフトの配布ページ（https://www.turzx.com/2025/05/26/35_inch/ 、2026-08-16 更新）にあるのは、「3.5inch app」の英語版と中国語版だけです（いずれも 2025/12/02 版、`.rar`）
+- 英語版（`https://down.turzx.com/35inchENG.rar`、約 25.6 MB）の中身は、`UsbMonitor.exe`（2026-06-26 版）、.NET 用の DLL、Windows のドライバー定義（`Driver/usbser/cdc.inf`）でした
+- サイト内検索（WordPress の検索 API）で「mac」「macos」「Mac OS」「苹果」を引くと、どれも 0 件でした。macOS 版の配布はありません
+- **Mac では、公式ソフトの代わりにこのプログラムが設定します。**明るさ（`SET_BRIGHTNESS`、110）と向き（`SET_ORIENTATION`、121）は、rev A の命令でパネルに直接送れます（§4-4）。`run` と `test-pattern` は、接続のたびに `--brightness`（既定 30）と `--flip` の値を送ります（`claude_usage_display/turing.py` の `TuringRevA.initialize`）。公式ソフトの「Theme」は画面の絵柄の選択なので、自前で描くこのプログラムでは使いません
+
 ### 4-2. 機種と、見分け方の落とし穴
 
 - 選んだのは Turing Smart Screen 3.5 インチ rev A（480×320、USB `1a86:5722`、シリアル番号 `USB35INCHIPSV2`）です。AliExpress の TURZX の商品（商品 ID 1005008850981488）で、商品画像の付属ソフトの画面（ウィンドウ名 `Turing Smart Screen`）が rev A の付属ソフトと一致していました（studioc のセッションが調べた結果。`docs/handover.md` §2）
