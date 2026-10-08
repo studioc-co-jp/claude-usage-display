@@ -144,6 +144,22 @@ scripts/uninstall-launch-agent.sh                                 # 自動起動
 - `KeepAlive` が true なので、`kill -9` で落としても約 3 秒で起動し直した
 - macOS 27 の `system_profiler` には `SPUSBDataType` が無く、`SPUSBHostDataType` を使う（`system_profiler -listDataTypes` で確認）
 
+### 4-7. 実機: 電源と USB の認識（2026-10-09、Mac mini M4・Mac16,10、macOS 27.0.1）
+
+ディスプレイが届いた。つないだ時点では自動起動が登録されたままだったが、ログでは接続待ちのままで、ディスプレイには何も送っていない。認識を待つ前に自動起動を解除した（§5-6 の 1）。
+
+| つなぎ方 | ケーブル | 電源 | USB の認識 |
+|---|---|---|---|
+| USB ハブの USB-A 端子 | 付属の USB-A⇔USB-C | 入る。画面に「PLEASE RUN THE APP」 | されない。`ioreg -p IOUSB`・`system_profiler SPUSBHostDataType` に `1a86` の機器が無く、`/dev/cu.usbmodem…` も無い。06:53〜07:03 に 0.5 秒ごとに USB の機器の出入りを記録し、出入りは 0 件 |
+| Mac mini 本体の USB-C 端子（本体に USB-A 端子は無い） | 別の USB-C⇔USB-C | 入らない | されない |
+
+- **電源の違いは USB Type-C の仕様どおり**（USB Type-C Cable and Connector Specification Release 2.0、USB-IF、2019-08。https://www.usb.org/sites/default/files/USB%20Type-C%20Spec%20R2.0%20-%20August%202019.pdf ）
+  - §4.4.2（PDF 141 ページ）: USB-C の端子の電源側は、受電側がつながるまで VBUS を出さない。USB-A などの従来の端子の機器は、この要件から除かれる（つないだだけで 5V を出す）
+  - §4.5.1.3.1（PDF 154 ページ）: 電源側は CC 端子の Rd（プルダウン抵抗）で受電側を検出し、検出してから VBUS を出す
+  - したがって、本体の USB-C 端子で電源が入らないのは、ディスプレイ側の USB-C 端子が Rd を示していないか、USB-C⇔USB-C ケーブルの CC の線が通っていないか、のどちらか。USB-A の端子からは CC の判定なしに 5V が来るので点く
+- **対処の候補**: Mac 本体の USB-C 端子に「USB-C（オス）→ USB-A（メス）」の変換アダプターを付け、付属の USB-A⇔USB-C ケーブルでつなぐ。仕様 §3.6.1 の表 3-19 の注 1（PDF 86 ページ）で、この変換アダプターは CC を Rd（5.1kΩ）で GND につなぐと定められているので、Mac は受電側を検出して 5V を出す
+- **認識されない件は未解決**（ハブ経由で電源が入っても列挙されない）。切り分け: 上の変換アダプター経由で付属ケーブルをつなぐ → 認識されればハブ側の問題、電源は入るのに認識されなければ付属ケーブル（データの線が無い充電専用など）か機器側の問題。データ通信に使えると分かっている別の USB-A⇔USB-C ケーブルでも試す
+
 ## 5. 残っている作業（上から順に）
 
 1〜5 は 2026-10-05 に終えた（README.md、CLAUDE.md、requirements.txt と .gitignore、自動起動の作成と登録、git の初期化と push）。
