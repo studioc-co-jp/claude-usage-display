@@ -19,6 +19,7 @@ USB 転送を任意に分割・結合するため、コマンドと画素が混�
 
 from __future__ import annotations
 
+import errno
 import os
 from enum import IntEnum
 
@@ -55,6 +56,11 @@ class Orientation(IntEnum):
 
 class DeviceNotFound(Exception):
     pass
+
+
+def is_disconnected(error: BaseException) -> bool:
+    """送信中にディスプレイが抜かれたときの例外か（libusb は ENODEV を返し、pyusb の USBError の errno に入る）。"""
+    return getattr(error, "errno", None) == errno.ENODEV
 
 
 def encode_command(cmd: Command, x: int = 0, y: int = 0, ex: int = 0, ey: int = 0) -> bytes:

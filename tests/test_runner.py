@@ -1,4 +1,5 @@
 import argparse
+import errno
 import unittest
 from datetime import datetime, timezone
 from unittest import mock
@@ -35,6 +36,22 @@ class StopAfterFrames:
             self.frames -= 1
         elif self.frames == 0 and sum(map(len, self.writes[self.writes.index(LANDSCAPE_HEADER) + 1:])) == 480 * 320 * 2:
             self.runner.stop.set()
+
+    def close(self):
+        pass
+
+
+class FailOnFrame:
+    """画面の送信を始めたところで ``error`` を出し、ループに終了の合図を出す送信路。"""
+
+    def __init__(self, runner, error):
+        self.runner = runner
+        self.error = error
+
+    def write(self, data):
+        if data == LANDSCAPE_HEADER:
+            self.runner.stop.set()
+            raise self.error
 
     def close(self):
         pass
@@ -82,6 +99,21 @@ class RunnerTest(unittest.TestCase):
                 mock.patch.dict(cli.THEMES, {"gauge": draw}), self.assertLogs(cli.log, "WARNING"):
             runner.loop()
         self.assertEqual(draw.call_args.args[3], ("5時間", "週次", "Opus週次"))
+
+    def test_unplugging_is_logged_in_one_line_and_waits_again(self):
+        import usb.core
+
+        for error, level, traceback in ((usb.core.USBError("No such device", -4, errno.ENODEV), "WARNING", False),
+                                        (usb.core.USBError("Pipe error", -9, errno.EPIPE), "ERROR", True)):
+            runner = cli.Runner(make_args())
+            with self.subTest(errno=error.errno), \
+                    mock.patch.object(cli.UsbTransport, "open", return_value=FailOnFrame(runner, error)), \
+                    mock.patch.object(cli, "fetch_snapshot", return_value=snapshot()), \
+                    self.assertLogs(cli.log, "WARNING") as logs:
+                runner.loop()
+                self.assertIsNone(runner.display)
+                record = logs.records[0]
+                self.assertEqual((record.levelname, record.exc_info is not None), (level, traceback))
 
 
 class ArgumentsTest(unittest.TestCase):

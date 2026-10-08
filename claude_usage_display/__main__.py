@@ -18,7 +18,7 @@ from datetime import datetime, timedelta, timezone
 
 from . import gauge, render
 from .render import render_test_pattern
-from .turing import PID, VID, DeviceNotFound, TuringRevA, UsbTransport, to_rgb565le
+from .turing import PID, VID, DeviceNotFound, TuringRevA, UsbTransport, is_disconnected, to_rgb565le
 from .usage import Meter, Snapshot, UsageError, fetch_snapshot, meter_labels
 
 log = logging.getLogger("claude_usage_display")
@@ -192,8 +192,11 @@ class Runner:
                     self.last_frame = frame
                     if self.args.save_png:
                         image.save(self.args.save_png)
-                except Exception:  # noqa: BLE001
-                    log.exception("送信に失敗しました。接続し直します")
+                except Exception as e:  # noqa: BLE001
+                    if is_disconnected(e):  # 抜いただけなので、トレースバックは残さない
+                        log.warning("ディスプレイが外れました。接続を待ちます")
+                    else:
+                        log.exception("送信に失敗しました。接続し直します")
                     self._close(self.display)
                     self.display = None
                     continue
