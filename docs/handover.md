@@ -25,10 +25,10 @@ Claude Code の利用枠 3 つ（**5 時間・週次・Fable 週次**）を、Ma
 
 ## 3. 現在の状態
 
-2026-10-05 夕方、このディレクトリで起動したセッションが §5 の 1〜5 を終えた時点の状態。2026-10-09 にディスプレイが届き、§5-6 の 1〜5 を終えた（§4-7・§4-8）。
+2026-10-05 夕方、このディレクトリで起動したセッションが §5 の 1〜5 を終えた時点の状態。2026-10-09 にディスプレイが届き、§5-6 の 1〜6 を終え、7 の登録まで済ませた（§4-7・§4-8）。
 
 - **GitHub `studioc-co-jp/claude-usage-display`（private）の `main` に push 済み。**2026-10-05 に作成者のメールアドレスを非公開用に書き換えるため、GitHub 上のリポジトリを作り直して push し直し、そのあと会社の組織 `studioc-co-jp` へ移した（§6）
-- **自動起動は 2026-10-09 に解除した**（ディスプレイをつなぐ前の §5-6 の 1）。登録し直すのは §5-6 の 7。2026-10-05 に登録したとき（既定のオプション。`~/Library/LaunchAgents/jp.co.studioc.claude-usage-display.plist`、ログは `~/Library/Logs/claude-usage-display.log`）に確かめたことは次のとおり
+- **自動起動は登録済み**（2026-10-09 08:22 に既定のオプションで登録し直し、ログに「ディスプレイに接続しました」が出た。§5-6 の 7）。ディスプレイをつなぐ前に一度解除していた（§5-6 の 1）。2026-10-05 に登録したとき（既定のオプション。`~/Library/LaunchAgents/jp.co.studioc.claude-usage-display.plist`、ログは `~/Library/Logs/claude-usage-display.log`）に確かめたことは次のとおり
   - 登録・オプションを変えての登録し直し・誤ったオプションの拒否・解除・強制終了後の起動し直し（約 3 秒）を実際に動かして確かめた
   - launchd から起動しても Keychain の読み取りと利用枠の取得が通ることを、`preview` を 1 回だけ動かす使い捨てのジョブで確かめた（§4-6）
 - テストは 50 件すべて成功（2026-10-09 時点）（`.venv/bin/python -m unittest discover -s tests`）
@@ -225,7 +225,7 @@ scripts/uninstall-launch-agent.sh                                 # 自動起動
           display.close()
       EOF
       ```
-   6. **実際の画面を数分動かす**（2026-10-09 に開始。文字の色と太さを直した。§4-8）: `.venv/bin/python -m claude_usage_display run --save-png /tmp/claude-usage-last.png`（Ctrl+C で終了）。画面と保存した画像が一致することを確かめる。ユーザーに次を見てもらう
+   6. **実際の画面を数分動かす**（2026-10-09 済み。文字の色と太さを直し、ユーザーが実機で確定した。明るさは既定の 30 のまま。§4-8）: `.venv/bin/python -m claude_usage_display run --save-png /tmp/claude-usage-last.png`（Ctrl+C で終了）。画面と保存した画像が一致することを確かめる。ユーザーに次を見てもらう
       - ゲージ型の細部: リングの縁、灰色の文字の読みやすさ、カードの面と黒地の差
       - 明るさ: 既定は 30。`--brightness 20`・`--brightness 50` などで見比べる
       - 合わなければ `--theme classic` と見比べる
@@ -247,7 +247,7 @@ scripts/uninstall-launch-agent.sh                                 # 自動起動
             display.close()
         EOF
         ```
-   7. **自動起動を登録し直す**: `scripts/install-launch-agent.sh`。手順 4・6 で決めたオプションがあれば付ける（例: `scripts/install-launch-agent.sh --flip --brightness 40`）。ログアウトしてログインし直したあとも表示されることと、`~/Library/Logs/claude-usage-display.log` に「ディスプレイに接続しました」が出ることを確かめる
+   7. **自動起動を登録し直す**（2026-10-09 08:22 に既定のオプションで登録し、ログで接続を確認済み。ログアウトしてログインし直したあとの表示は、ユーザーが次にログインし直したときに確かめる）: `scripts/install-launch-agent.sh`。手順 4・6 で決めたオプションがあれば付ける（例: `scripts/install-launch-agent.sh --flip --brightness 40`）。ログアウトしてログインし直したあとも表示されることと、`~/Library/Logs/claude-usage-display.log` に「ディスプレイに接続しました」が出ることを確かめる
    8. **Mac 本体の USB-C 端子に、L 字アダプターなしでつなぐ**: USB-C⇔USB-C ケーブルで、プラグの向きを両方試す。電源が入れば、§4-7 の「ディスプレイ側の USB-C 端子が Rd を示していない」という見立てを直す（§4-7）
 7. **実機で分かったことを書き残す**: 確保の可否、向き、色、明るさ、転送時間、ゲージ型の見え方、写真を、`docs/article-material.md` §10 に書く。作業の判断に関わること（エラーと対処など）は、この文書の §4 にも追記する
 8. **公開と記事**: §6 の「認証の扱い」を決める → 必要なら実装を直す → リポジトリを public にする → `~/projects/studioc` で起動したセッションが `/techblog-write` で記事を書く（素材は `docs/article-material.md`）
