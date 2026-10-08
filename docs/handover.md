@@ -276,6 +276,10 @@ scripts/uninstall-launch-agent.sh                                 # 自動起動
   - Anthropic は、これらの制限を予告なく執行できる（"may do so without prior notice"）。用途ごとの可否は sales への問い合わせを案内している
   - このツールは、利用者本人の Mac で本人のトークンを読むだけで、保存も他人への提供もしない。ただし、Anthropic 純正ではないアプリが OAuth のトークンを使う点について、上の文書は許可も禁止も明示していない
   - 公式に渡される別の経路がある: ステータスラインのスクリプトに渡る JSON の `rate_limits.five_hour` / `rate_limits.seven_day`（`used_percentage` と `resets_at`）。https://code.claude.com/docs/en/statusline の「Rate limit usage」。**モデル別の週次（Fable 週次）は含まれない。**Claude Code のセッションが動いているあいだだけ更新される（`refreshInterval` で定期的に更新できる）
+  - 2026-10-09 に同じページを読み直し、上の文言が変わっていないことを確かめた。原文: "Anthropic does not permit third-party developers to offer Claude.ai login into their own applications, or to route requests through Free, Pro, or Max plan credentials on behalf of their users. Moreover, developers may not collect, store, or intermediate Claude.ai credentials or session tokens"
+- **名前の扱い（2026-10-09 に調査）**: リポジトリ名に `claude`、画面の見出しに「Claude Code」を使っている
+  - 同じページの「Using the Claude Code name and logo」は、Claude Code を組み込んだ製品について、「Claude Code・Anthropic の名前やロゴを、自分の製品・機能・会社の名前の一部に使えない」「Anthropic が作った・推奨している・提携しているように見せてはならない」と定め、それ以外の名前の使い方は商標のガイドラインによるとしている
+  - 商標のガイドライン（https://www.anthropic.com/legal/trademark-guidelines 、2024-08-01 発効）は、リポジトリ名やプロジェクト名についての個別の定めを持たない。全体として「Anthropic が許可した範囲で、事前に承認した資料でのみ使える」「後援・推奨・提携を示すように使ってはならない」と定め、問い合わせ先は marketing@anthropic.com
 - **commit の作成者欄のメールアドレスは公開しない**（2026-10-05 ユーザーが決定）。GitHub のユーザー `blacksawa` の公開リポジトリは 0 件（認証なしの API で確認）で、public にすれば、commit の作成者欄に入っていた個人のメールアドレスが初めて公開されるため
   - このリポジトリの `user.email` は非公開用アドレス `75772838+blacksawa@users.noreply.github.com` にした（`git config --local`。全体の設定は変えていない）。形式は GitHub の文書「Email addresses reference」の「Your noreply email address」（2017-07-18 より後に作ったアカウントは `ID+USERNAME@users.noreply.github.com`。`blacksawa` は 2020-12-10 作成、ID 75772838）
   - 既存の commit は `git filter-repo --mailmap` で書き換えた（日時とツリーは変わらない。`origin` の設定が消えるので登録し直した）。この文書の中に書いていたアドレスも `git filter-repo --replace-text` で履歴から消した。**個人のアドレスを、ファイルにも commit メッセージにも書かない**
