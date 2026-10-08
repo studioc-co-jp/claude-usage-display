@@ -25,13 +25,13 @@ Claude Code の利用枠 3 つ（**5 時間・週次・Fable 週次**）を、Ma
 
 ## 3. 現在の状態
 
-2026-10-05 夕方、このディレクトリで起動したセッションが §5 の 1〜5 を終えた時点の状態。
+2026-10-05 夕方、このディレクトリで起動したセッションが §5 の 1〜5 を終えた時点の状態。2026-10-09 にディスプレイが届き、§5-6 の 1〜5 を終えた（§4-7・§4-8）。
 
 - **GitHub `studioc-co-jp/claude-usage-display`（private）の `main` に push 済み。**2026-10-05 に作成者のメールアドレスを非公開用に書き換えるため、GitHub 上のリポジトリを作り直して push し直し、そのあと会社の組織 `studioc-co-jp` へ移した（§6）
-- **自動起動は登録済み**（2026-10-05、既定のオプション。`~/Library/LaunchAgents/jp.co.studioc.claude-usage-display.plist`）。ディスプレイが無いので `run` は待機中で、API は呼んでいない。ログは `~/Library/Logs/claude-usage-display.log`
+- **自動起動は 2026-10-09 に解除した**（ディスプレイをつなぐ前の §5-6 の 1）。登録し直すのは §5-6 の 7。2026-10-05 に登録したとき（既定のオプション。`~/Library/LaunchAgents/jp.co.studioc.claude-usage-display.plist`、ログは `~/Library/Logs/claude-usage-display.log`）に確かめたことは次のとおり
   - 登録・オプションを変えての登録し直し・誤ったオプションの拒否・解除・強制終了後の起動し直し（約 3 秒）を実際に動かして確かめた
   - launchd から起動しても Keychain の読み取りと利用枠の取得が通ることを、`preview` を 1 回だけ動かす使い捨てのジョブで確かめた（§4-6）
-- テストは 49 件すべて成功（`.venv/bin/python -m unittest discover -s tests`）
+- テストは 50 件すべて成功（2026-10-09 時点）（`.venv/bin/python -m unittest discover -s tests`）
 - この回で見つけて直した不具合（いずれもテストを追加済み）
   - `--brightness` の範囲外（例: 150）が引数解析を通り、接続した時点で初期化の失敗を 10 秒ごとに繰り返す → 引数解析で止める
   - 取得失敗の文言のうち最長の「ログイン切れ（…）」が、時刻と合わせて右端で切れる → 理由と時刻を左右に分け、収まらないときは文字を縮める
@@ -135,6 +135,7 @@ scripts/uninstall-launch-agent.sh                                 # 自動起動
 - 数字は SF Pro Rounded（`/System/Library/Fonts/SFNSRounded.ttf`。太さの軸を持つ可変フォントで、Pillow の `set_variation_by_name("Semibold")` で太さを選ぶ）。日本語はヒラギノ角ゴシック。この Mac の Pillow は raqm が有効（`features.check("raqm")` が True）
 - 図形は 4 倍で描いて LANCZOS で縮め、文字は縮めた後に等倍で書く（縮めると文字がかすれるため）。描画と RGB565 への変換は 1 回 38 ミリ秒
 - 時刻は iOS の日本語表記にならい、時の先頭に 0 を付けない（「9:55」）
+- 2026-10-09、実機を見たユーザーの指示で文字の色を変えた（§4-8）。右上の更新時刻と「あと…」は Gray → 白（Label）、「リセット」は Gray (2) → Gray。Gray (2) は使わなくなった。13 ピクセル以下になりうる文字は W4 で書く（§4-8）
 
 ### 4-6. launchd で分かったこと（2026-10-05、macOS 27.0.1）
 
@@ -150,23 +151,42 @@ scripts/uninstall-launch-agent.sh                                 # 自動起動
 
 | つなぎ方 | ケーブル | 電源 | USB の認識 |
 |---|---|---|---|
-| USB ハブの USB-A 端子 | 付属の USB-A⇔USB-C | 入る。画面に「PLEASE RUN THE APP」 | されない。`ioreg -p IOUSB`・`system_profiler SPUSBHostDataType` に `1a86` の機器が無く、`/dev/cu.usbmodem…` も無い。06:53〜07:03 に 0.5 秒ごとに USB の機器の出入りを記録し、出入りは 0 件 |
-| Mac mini 本体の USB-C 端子（本体に USB-A 端子は無い） | 別の USB-C⇔USB-C | 入らない | されない |
+| USB ハブの USB-A 端子 | 付属の USB-A⇔USB-C（ディスプレイ側に L 字アダプターを挟んでいた。下記） | 入る。画面に「PLEASE RUN THE APP」 | されない。`ioreg -p IOUSB`・`system_profiler SPUSBHostDataType` に `1a86` の機器が無く、`/dev/cu.usbmodem…` も無い。06:53〜07:03 に 0.5 秒ごとに USB の機器の出入りを記録し、出入りは 0 件 |
+| Mac mini 本体の USB-C 端子（本体に USB-A 端子は無い） | 別の USB-C⇔USB-C（L 字アダプターの有無は記録していない） | 入らない | されない |
 
 - **電源の違いは USB Type-C の仕様どおり**（USB Type-C Cable and Connector Specification Release 2.0、USB-IF、2019-08。https://www.usb.org/sites/default/files/USB%20Type-C%20Spec%20R2.0%20-%20August%202019.pdf ）
   - §4.4.2（PDF 141 ページ）: USB-C の端子の電源側は、受電側がつながるまで VBUS を出さない。USB-A などの従来の端子の機器は、この要件から除かれる（つないだだけで 5V を出す）
   - §4.5.1.3.1（PDF 154 ページ）: 電源側は CC 端子の Rd（プルダウン抵抗）で受電側を検出し、検出してから VBUS を出す
-  - したがって、本体の USB-C 端子で電源が入らないのは、ディスプレイ側の USB-C 端子が Rd を示していないか、USB-C⇔USB-C ケーブルの CC の線が通っていないか、のどちらか。USB-A の端子からは CC の判定なしに 5V が来るので点く
+  - したがって、本体の USB-C 端子で電源が入らないのは、ディスプレイ側の USB-C 端子が Rd を示していないか、USB-C⇔USB-C ケーブルの CC の線が通っていないか、のどちらか。USB-A の端子からは CC の判定なしに 5V が来るので点く。このときアダプターを挟んでいた場合は、アダプターが CC を通す向きも確かめる対象に入る（CC もプラグの向きで使う位置が変わる。§4.5.1.3.1）。アダプターなしで両方の向きを試す（§5-6 の 8）
 - **対処の候補**: Mac 本体の USB-C 端子に「USB-C（オス）→ USB-A（メス）」の変換アダプターを付け、付属の USB-A⇔USB-C ケーブルでつなぐ。仕様 §3.6.1 の表 3-19 の注 1（PDF 86 ページ）で、この変換アダプターは CC を Rd（5.1kΩ）で GND につなぐと定められているので、Mac は受電側を検出して 5V を出す
-- **認識されない件は未解決**（ハブ経由で電源が入っても列挙されない）。切り分け: 上の変換アダプター経由で付属ケーブルをつなぐ → 認識されればハブ側の問題、電源は入るのに認識されなければ付属ケーブル（データの線が無い充電専用など）か機器側の問題。データ通信に使えると分かっている別の USB-A⇔USB-C ケーブルでも試す
+- **認識されなかった原因は、ディスプレイの USB-C 端子に挟んでいた L 字アダプターだった**（2026-10-09 07:10〜07:54、`ioreg -p IOUSB` を 0.5 秒ごとに取って機器の出入りを時刻つきで記録し、ユーザーの付け替えと突き合わせた）
+  - アダプター: サンワサプライ `AD-USB38CCFL`（USB-C オス⇔USB-C メス、L 字。最大 40Gbps・240W・DisplayPort Alt Mode をうたう。https://www.sanwa.co.jp/product/syohin?code=AD-USB38CCFL 。USB 2.0 の配線の記載は無い）
+  - **アダプターのメス側に挿すケーブルの向きで、USB 2.0 の信号が通るかが決まる。**片方の向きでは、iPhone（付属ケーブル）もディスプレイ（付属ケーブル・手持ちの USB-A⇔USB-C ケーブル）も認識されず、ケーブルを裏返すと認識される。アダプターをディスプレイに挿す向きは結果に関係しない
+  - アダプターを外すと、付属ケーブルはディスプレイにどちらの向きで挿しても認識される。手持ちのケーブルも認識される。ハブの端子（Location ID `0x00111000`）・ケーブル 2 本・ディスプレイはどれも正常
+  - USB Type-C 仕様 §3.2.3 表 3-4 の注 1（PDF 68 ページ）: メス側は D+/D- を 2 つの位置（Dp1/Dn1・Dp2/Dn2）のどちらでも受けなければならない。ケーブルのプラグは片側の 1 組しか持たない。このアダプターのメス側はこれを満たしていない。§3.6（PDF 85 ページ）は「Only the adapter assemblies defined in this specification are allowed」とし、定めているのはUSB-C → Standard-A メス・USB-C → Micro-B メスの 2 種類だけで、USB-C のオス⇔メスの延長アダプターは定めていない
+  - アダプターを使うなら、通る向きでケーブルを挿す（プラグに上下の印を付ける）
+  - 切り分けで分かった注意: iPhone は Wi-Fi 経由でも Mac に見える（`usbmuxd` のログの `[com.apple.usbmux:bonjour]`）ので、USB で認識されたかは `ioreg -p IOUSB` で見る。ロック中の iPhone はコンピュータと通信しない（Apple サポート https://support.apple.com/en-us/111806 ）ので、ロックを解除してから挿す
+  - zsh では `log` が組み込みコマンドと重なるので、システムログは `/usr/bin/log show` で読む
+
+### 4-8. 実機: 確保・向き・色・転送時間・文字（2026-10-09）
+
+- `probe`: `1a86:5722`、製造元 `Turing`、製品名 `UsbMonitor`、シリアル `USB35INCHIPSV2`（rev A）、Full Speed（12 Mb/s）。interface 0 は class 0x02（0x81 IN、割り込み、8 バイト）、interface 1 は class 0x0a（0x82 IN・0x03 OUT、バルク、64 バイト）。「インターフェースを確保できました」。macOS は `/dev/cu.usbmodemUSB35INCHIPSV21` も作るが、このプログラムは使わない
+- `test-pattern`: `--flip` なしで向きが正しく、赤と青の入れ替わりも無い
+- 1 画面（307,200 バイト）の転送: 5 回で 1867〜1884 ミリ秒。区切りを 1024・4096・16384・65536 バイトに変えても1865〜1873 ミリ秒で変わらないので、ディスプレイ側の受け取りの速さ（約 164 KB/秒）で決まる。120 秒ごとの描き直しには支障が無い
+- `run`: 接続して実際の利用枠を表示した。保存した画像と、ユーザーが撮った実機の写真の配置・色は同じ
+- 文字の調整（ユーザーの指示。実機の写真つき）
+  - 「右上の更新時刻と、各カードの一番下の『あと…』が薄くて見えないので、リセット日時と同じ色に」→ 白（Label）
+  - 「『リセット』はそこまで見やすくする必要はないが、全く見えないのでもう少し明るく」→ Gray (2)（99）から Gray（142）
+- **ヒラギノ角ゴシック W3 は 12・13 ピクセルで「4」の横棒が消える**（実機の写真の「あと3時間40分」でも崩れていた。Pillow 12.3.0・FreeType 2.14.3）。4 倍で描いて縮めると崩れないので、ヒンティングが原因。W3 の 9〜11・14〜16 ピクセルと、W4 の 10〜13 ピクセルは崩れない。縮めて描くと文字がかすれる（§4-5）ので採らず、13 ピクセル以下になりうる文字（「あと…」、更新時刻、取得失敗の文言。横棒の画面の取得失敗の文言も）を W4 にした（`render.SMALL_WEIGHT`）
+  - テスト `test_small_weight_keeps_crossbar_of_four`: 「4」の各行で濃い画素が続く幅の最大が、字幅の 0.7 以上。崩れた W3 は 0.33〜0.44、崩れていない字は 0.86 以上。W3 に戻すと 12・13 ピクセルで失敗する
 
 ## 5. 残っている作業（上から順に）
 
 1〜5 は 2026-10-05 に終えた（README.md、CLAUDE.md、requirements.txt と .gitignore、自動起動の作成と登録、git の初期化と push）。
 
 6. **ディスプレイが届いたら**（外部要因。到着が再開の条件）。作業はすべて `~/projects/claude-usage-display` で行う。画面を見て判断する段階は、ユーザーに見てもらう
-   1. **つなぐ前に、自動起動を止める**: `scripts/uninstall-launch-agent.sh`（「停止しました」「解除しました」と出る）。登録したままつなぐと、常駐の `run` がすぐ送信を始め、確認用のコマンドと同じパネルへ同時に書く。パネルは画素を数えながら受け取るので、2 つのプロセスが書くと画面が崩れる（§4-3）
-   2. **つないで機種を確かめる**: USB-C でつなぎ、`system_profiler SPUSBHostDataType | grep -B8 -A2 'USB Product ID: 0x5722'` を実行する。`USB Vendor ID: 0x1a86`・`USB Product ID: 0x5722`・`Serial Number: USB35INCHIPSV2` が出れば rev A
+   1. **つなぐ前に、自動起動を止める**（2026-10-09 済み）: `scripts/uninstall-launch-agent.sh`（「停止しました」「解除しました」と出る）。登録したままつなぐと、常駐の `run` がすぐ送信を始め、確認用のコマンドと同じパネルへ同時に書く。パネルは画素を数えながら受け取るので、2 つのプロセスが書くと画面が崩れる（§4-3）
+   2. **つないで機種を確かめる**（2026-10-09 済み。rev A。§4-7）: USB-C でつなぎ、`system_profiler SPUSBHostDataType | grep -B8 -A2 'USB Product ID: 0x5722'` を実行する。`USB Vendor ID: 0x1a86`・`USB Product ID: 0x5722`・`Serial Number: USB35INCHIPSV2` が出れば rev A
       - 何も出なければ、ケーブルがデータ通信に対応しているかを確かめる。別の ID なら rev A ではないので、§4-3・§4-4 の前提から見直す
       - **ID が同じでもシリアルが `2017-2-25` なら XuanFang の rev B** で、通信方式が違う（`lcd_comm_rev_b.py` 75・77 行目）。rev A 用の以降の手順には進まない（`turing.py` はシリアルを見ずに ID だけで開き、rev A の命令を送るため）。rev B の通信方式を `turing.py` に足してから進める。違いは次のとおり（いずれも `lcd_comm_rev_b.py`）
         - 命令は 10 バイト（先頭と末尾にコマンド番号、中に 8 バイト。82〜99 行目）。番号は HELLO 0xCA・SET_ORIENTATION 0xCB・DISPLAY_BITMAP 0xCC・SET_LIGHTING 0xCD・SET_BRIGHTNESS 0xCE（29〜34 行目）
@@ -175,11 +195,11 @@ scripts/uninstall-launch-agent.sh                                 # 自動起動
         - 向きはパネルが縦と横だけを持ち、上下逆はソフトで 180 度回す（189〜197 行目）
         - 画素は RGB565 のビッグエンディアン（203 行目）。幅×8 バイトずつ送り、送り終えたら 0.05 秒あける（249〜259 行目）
         - macOS: rev B 系（flagship）は、ライブラリの送信の競合を直して間を置くと安定したという報告がある（issue #7、gerph、2022-09-01、PR #34）。libusb で直接書く方式が rev B でも要るかの報告は無いので、実機で確かめながら作る
-   3. **インターフェースを確保できるか**: `.venv/bin/python -m claude_usage_display probe`。最後に「インターフェースを確保できました」と出れば次へ。確保できない場合は、表示されたエラーをそのまま記録し、それをもとに対処を調べる。シリアル（`/dev/cu.usbmodem…`）での送信に切り替えない（§4-3。gist の報告者は確保できている）
-   4. **向きと色**: `.venv/bin/python -m claude_usage_display test-pattern`。正しければ、左上が赤で「左上」、右上が緑で「緑」、左下が青で「青」、右下が白、中央に「480×320」が出る
+   3. **インターフェースを確保できるか**（2026-10-09 済み。§4-8）: `.venv/bin/python -m claude_usage_display probe`。最後に「インターフェースを確保できました」と出れば次へ。確保できない場合は、表示されたエラーをそのまま記録し、それをもとに対処を調べる。シリアル（`/dev/cu.usbmodem…`）での送信に切り替えない（§4-3。gist の報告者は確保できている）
+   4. **向きと色**（2026-10-09 済み。`--flip` は要らない）: `.venv/bin/python -m claude_usage_display test-pattern`。正しければ、左上が赤で「左上」、右上が緑で「緑」、左下が青で「青」、右下が白、中央に「480×320」が出る
       - 上下が逆なら `test-pattern --flip` で確かめ直す。以降のコマンドにも `--flip` を付ける
       - 赤と青が入れ替わっていたら、`turing.py` の `to_rgb565le` の並びを見直す
-   5. **1 画面の転送時間を測る**（記事の素材）。次を実行する（2026-10-05 に、未接続の検出まで動くことを確認済み。上下が逆なら `TuringRevA(UsbTransport.open(), flipped=True)` にする）
+   5. **1 画面の転送時間を測る**（記事の素材。2026-10-09 済み。約 1.87 秒）。次を実行する（2026-10-05 に、未接続の検出まで動くことを確認済み。上下が逆なら `TuringRevA(UsbTransport.open(), flipped=True)` にする）
       ```
       .venv/bin/python - <<'EOF'
       import time
@@ -205,7 +225,7 @@ scripts/uninstall-launch-agent.sh                                 # 自動起動
           display.close()
       EOF
       ```
-   6. **実際の画面を数分動かす**: `.venv/bin/python -m claude_usage_display run --save-png /tmp/claude-usage-last.png`（Ctrl+C で終了）。画面と保存した画像が一致することを確かめる。ユーザーに次を見てもらう
+   6. **実際の画面を数分動かす**（2026-10-09 に開始。文字の色と太さを直した。§4-8）: `.venv/bin/python -m claude_usage_display run --save-png /tmp/claude-usage-last.png`（Ctrl+C で終了）。画面と保存した画像が一致することを確かめる。ユーザーに次を見てもらう
       - ゲージ型の細部: リングの縁、灰色の文字の読みやすさ、カードの面と黒地の差
       - 明るさ: 既定は 30。`--brightness 20`・`--brightness 50` などで見比べる
       - 合わなければ `--theme classic` と見比べる
@@ -228,6 +248,7 @@ scripts/uninstall-launch-agent.sh                                 # 自動起動
         EOF
         ```
    7. **自動起動を登録し直す**: `scripts/install-launch-agent.sh`。手順 4・6 で決めたオプションがあれば付ける（例: `scripts/install-launch-agent.sh --flip --brightness 40`）。ログアウトしてログインし直したあとも表示されることと、`~/Library/Logs/claude-usage-display.log` に「ディスプレイに接続しました」が出ることを確かめる
+   8. **Mac 本体の USB-C 端子に、L 字アダプターなしでつなぐ**: USB-C⇔USB-C ケーブルで、プラグの向きを両方試す。電源が入れば、§4-7 の「ディスプレイ側の USB-C 端子が Rd を示していない」という見立てを直す（§4-7）
 7. **実機で分かったことを書き残す**: 確保の可否、向き、色、明るさ、転送時間、ゲージ型の見え方、写真を、`docs/article-material.md` §10 に書く。作業の判断に関わること（エラーと対処など）は、この文書の §4 にも追記する
 8. **公開と記事**: §6 の「認証の扱い」を決める → 必要なら実装を直す → リポジトリを public にする → `~/projects/studioc` で起動したセッションが `/techblog-write` で記事を書く（素材は `docs/article-material.md`）
 
