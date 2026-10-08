@@ -1,11 +1,15 @@
 import unittest
 from datetime import datetime, timedelta, timezone
 
+from PIL import Image, ImageDraw
+
 from claude_usage_display.render import (
     ACCENT,
     CRITICAL,
     HEIGHT,
     MARGIN_X,
+    MIN_FONT_SIZE,
+    SMALL_WEIGHT,
     STATUS_GAP,
     SURFACE,
     WARNING,
@@ -80,6 +84,23 @@ class RenderTest(unittest.TestCase):
         fitted = fit_font(long_text, 448, 14)
         self.assertLess(fitted.size, 14)
         self.assertLessEqual(fitted.getlength(long_text), 448)
+
+    def test_small_weight_keeps_crossbar_of_four(self):
+        """W3 の 12・13 ピクセルでは「4」の横棒が消え、濃い画素の続く幅が字幅の 0.33〜0.44 になる。"""
+        if not str(getattr(font(14, SMALL_WEIGHT), "path", "")).endswith(".ttc"):
+            self.skipTest("ヒラギノ角ゴシックが無い")
+        for size in range(MIN_FONT_SIZE, 14):
+            image = Image.new("L", (size * 2, size * 2), 0)
+            ImageDraw.Draw(image).text((size // 2, size // 2), "4", font=font(size, SMALL_WEIGHT), fill=255)
+            left, top, right, bottom = image.getbbox()
+            longest = 0
+            for y in range(top, bottom):
+                run = 0
+                for x in range(left, right):
+                    run = run + 1 if image.getpixel((x, y)) >= 128 else 0
+                    longest = max(longest, run)
+            with self.subTest(size=size):
+                self.assertGreaterEqual(longest / (right - left), 0.7)
 
 
 if __name__ == "__main__":

@@ -87,7 +87,7 @@ class GaugeRenderTest(unittest.TestCase):
         header = range(0, gauge.CARD_TOP - 2)
         inked = {x for x in range(WIDTH) for y in header if image.getpixel((x, y)) != gauge.BACKGROUND}
         self.assertFalse({x for x in inked if x > WIDTH - gauge.HEADER_INSET + 1}, "右の余白にはみ出している")
-        time_left = WIDTH - gauge.HEADER_INSET - gauge.font(gauge.FOOTNOTE, 3).getlength("15:24 時点")
+        time_left = WIDTH - gauge.HEADER_INSET - gauge.font(gauge.FOOTNOTE, gauge.SMALL_WEIGHT).getlength("15:24 時点")
         gap = range(round(time_left - gauge.STATUS_GAP) + 2, round(time_left) - 2)
         self.assertFalse(inked & set(gap), "理由と時刻が重なっている")
 

@@ -18,7 +18,8 @@ from functools import lru_cache
 
 from PIL import Image, ImageDraw, ImageFont
 
-from .render import CRITICAL_AT, HEIGHT, JST, WARNING_AT, WEEKDAYS, WIDTH, fit_font, font, format_remaining
+from .render import (CRITICAL_AT, HEIGHT, JST, SMALL_WEIGHT, WARNING_AT, WEEKDAYS, WIDTH, fit_font, font,
+                     format_remaining)
 from .usage import Meter, Snapshot
 
 SCALE = 4
@@ -29,7 +30,6 @@ BACKGROUND = (0, 0, 0)
 CARD = (33, 32, 33)
 LABEL = (255, 255, 255)
 SECONDARY = (142, 142, 147)  # Gray
-TERTIARY = (99, 99, 102)     # Gray (2)
 BLUE = (0, 145, 255)
 ORANGE = (255, 146, 48)
 RED = (255, 66, 69)
@@ -101,7 +101,7 @@ def content_rows() -> tuple[float, float, float, float, float, float]:
     上端は見出しの字の上端、下端は残り時間の字の下端で、どちらもフォントの実寸で測る。
     """
     ascent = -font(SUBHEAD, 6).getbbox("時", anchor="ls")[1]
-    descent = font(FOOTNOTE, 3).getbbox("あと", anchor="ls")[3]
+    descent = font(FOOTNOTE, SMALL_WEIGHT).getbbox("あと", anchor="ls")[3]
     label = ascent
     ring_center = label + 16 + RING_RADIUS
     caption = ring_center + RING_RADIUS + 28
@@ -186,21 +186,21 @@ def render(snapshot: Snapshot | None, now: datetime, status: str | None = None,
     image = shapes.finish()
     draw = ImageDraw.Draw(image)
 
-    small = font(FOOTNOTE, 3)
+    small = font(FOOTNOTE, SMALL_WEIGHT)
     fetched = f"{snapshot.fetched_at.astimezone(JST):%H:%M}" if snapshot else ""
     if status:
         when = f"{fetched} 時点" if snapshot else ""
-        draw.text((WIDTH - HEADER_INSET, HEADER_BASELINE), when, font=small, fill=SECONDARY, anchor="rs")
+        draw.text((WIDTH - HEADER_INSET, HEADER_BASELINE), when, font=small, fill=LABEL, anchor="rs")
         draw.text((badge[0], badge[1] + 4.5), "!", font=rounded(CAPTION1, "Bold"), fill=BACKGROUND, anchor="ms")
         message_left = HEADER_INSET + 20
         reserved = small.getlength(when) + STATUS_GAP if when else 0
         draw.text((message_left, HEADER_BASELINE), status,
-                  font=fit_font(status, WIDTH - HEADER_INSET - message_left - reserved, FOOTNOTE),
+                  font=fit_font(status, WIDTH - HEADER_INSET - message_left - reserved, FOOTNOTE, SMALL_WEIGHT),
                   fill=ORANGE, anchor="ls")
     else:
         draw.text((HEADER_INSET, HEADER_BASELINE), "Claude Code", font=font(SUBHEAD, 6), fill=LABEL, anchor="ls")
         if snapshot:
-            draw.text((WIDTH - HEADER_INSET, HEADER_BASELINE), f"{fetched} 更新", font=small, fill=SECONDARY,
+            draw.text((WIDTH - HEADER_INSET, HEADER_BASELINE), f"{fetched} 更新", font=small, fill=LABEL,
                       anchor="rs")
 
     inner = CARD_WIDTH - CARD_PADDING * 2
@@ -210,8 +210,8 @@ def render(snapshot: Snapshot | None, now: datetime, status: str | None = None,
         percent = None if meter.percent is None else max(0.0, meter.percent)
         _value(draw, cx, origin + ring_y + 10, percent)
         when, remain = reset_lines(meter.resets_at, now)
-        draw.text((cx, origin + caption_y), "リセット", font=font(CAPTION1, 3), fill=TERTIARY, anchor="ms")
+        draw.text((cx, origin + caption_y), "リセット", font=font(CAPTION1, 3), fill=SECONDARY, anchor="ms")
         draw.text((cx, origin + when_y), when, font=fit_font(when, inner, SUBHEAD, 6), fill=LABEL, anchor="ms")
-        draw.text((cx, origin + remain_y), remain, font=fit_font(remain, inner, FOOTNOTE), fill=SECONDARY,
+        draw.text((cx, origin + remain_y), remain, font=fit_font(remain, inner, FOOTNOTE, SMALL_WEIGHT), fill=LABEL,
                   anchor="ms")
     return image

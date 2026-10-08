@@ -26,5 +26,6 @@ Claude Code の利用枠（5 時間・週次・Fable 週次）を、USB でつ�
 - 依存は `requirements.txt`（版を固定）。libusb は Homebrew で入れる
 - 画面は 2 種類ある。既定のゲージ型は `claude_usage_display/gauge.py`、横棒の画面（`--theme classic`）は `claude_usage_display/render.py`。ユーザーがゲージ型を選んだうえで、戻せるように横棒の画面を残している（2026-10-05）
 - 画面の色は、送る前に RGB565 へ落ちる。中間の灰色は緑に寄るので、新しい灰色を足すときは RGB565 でそのまま表せる値にする（`tests/test_gauge.py` の `test_card_color_survives_rgb565`）
+- 13 ピクセル以下になりうる文字は `render.SMALL_WEIGHT`（W4）で書く。ヒラギノ角ゴシック W3 は 12・13 ピクセルで「4」の横棒が消える（`tests/test_render.py` の `test_small_weight_keeps_crossbar_of_four`、`docs/handover.md` §4-8）
 - README の画像（`docs/images/`）は `preview --demo` で作る。実際の利用枠が写った画像は commit しない
 - 自動起動のひな形は `launchd/`、登録・解除は `scripts/` にある

@@ -39,6 +39,9 @@ BAR_HEIGHT = 16
 BAR_RADIUS = 4
 STATUS_GAP = 12  # 下端の行で、左の理由と右の時刻のあいだに空ける幅
 MIN_FONT_SIZE = 10
+# ヒラギノ角ゴシック W3 は 12・13 ピクセルで、ヒンティングにより「4」の横棒が消える
+# （Pillow 12.3.0・FreeType 2.14.3。W4 は 10〜13 ピクセルで崩れない）。13 ピクセル以下になりうる文字は W4 で書く
+SMALL_WEIGHT = 4
 
 FONT_DIR = "/System/Library/Fonts"
 
@@ -147,8 +150,8 @@ def render(snapshot: Snapshot | None, now: datetime, status: str | None = None,
         when = f"{snapshot.fetched_at.astimezone(JST):%H:%M} 時点" if snapshot else ""
         reserved = small.getlength(when) + STATUS_GAP if when else 0
         message = f"! {status}"
-        draw.text((MARGIN_X, baseline), message, font=fit_font(message, WIDTH - MARGIN_X * 2 - reserved, 14),
-                  fill=WARNING, anchor="ls")
+        draw.text((MARGIN_X, baseline), message,
+                  font=fit_font(message, WIDTH - MARGIN_X * 2 - reserved, 14, SMALL_WEIGHT), fill=WARNING, anchor="ls")
         if when:
             draw.text((WIDTH - MARGIN_X, baseline), when, font=small, fill=INK_MUTED, anchor="rs")
     else:
