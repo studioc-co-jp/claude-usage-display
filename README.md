@@ -99,6 +99,7 @@ macOS 27 には `SPUSBDataType` がありません。`SPUSBHostDataType` を使�
 
 ```
 brew install python libusb
+git clone https://github.com/studioc-co-jp/claude-usage-display.git
 cd claude-usage-display
 python3 -m venv .venv
 .venv/bin/pip install -r requirements.txt
@@ -161,6 +162,19 @@ scripts/uninstall-launch-agent.sh          # 解除
 launchctl print gui/$(id -u)/jp.co.studioc.claude-usage-display | grep -E "^$(printf '\t')(state|pid|last exit code) ="
 tail -f ~/Library/Logs/claude-usage-display.log
 ```
+
+## 別の Mac（MacBook など）で使う
+
+プログラムは、ディスプレイをつないだ Mac の上で動きます。ディスプレイには、プログラムもログも残りません。別の Mac で使うときは、その Mac で次を行います。
+
+1. 「準備」の手順で、リポジトリを取ってきて仮想環境を作る（Homebrew と libusb も、その Mac に入れる）
+2. その Mac の Claude Code に、Claude のサブスクリプション（Pro・Max）でログインしておく。利用枠は、その Mac の Keychain にあるログイン情報で取得します。同じアカウントなら、どの Mac でも同じ値が出ます
+3. 自動起動を使うなら、その Mac で `scripts/install-launch-agent.sh` を実行する
+4. ディスプレイは、USB-A の端子（USB ハブやモニターの USB-A 端子）に、付属の USB-A⇔USB-C ケーブルでつなぐ（「困ったとき」の USB-C の項を参照）
+
+- ログ（`~/Library/Logs/claude-usage-display.log`）は、Mac ごとに別のファイルです。ある Mac につないでいたときのことは、その Mac のログで確かめます
+- ディスプレイがつながっていない Mac では、プログラムは 10 秒ごとに接続を確かめるだけで、利用枠の API は呼びません。2 台の Mac に自動起動を登録しておいても、API を呼ぶのはディスプレイをつないでいる方だけです
+- 更新は、それぞれの Mac で `git pull` と `.venv/bin/pip install -r requirements.txt` を行い、自動起動を登録し直します
 
 ## 困ったとき
 

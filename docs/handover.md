@@ -43,6 +43,7 @@ Claude Code の利用枠 3 つ（**5 時間・週次・Fable 週次**）を、Ma
   - **push は SSH の remote で行う**（`git@github.com:studioc-co-jp/claude-usage-display.git`）
 - `.venv/` は `python3 -m venv .venv && .venv/bin/pip install -r requirements.txt` で作れる（2026-10-05 に新しい venv で作り、テストが通ることを確認）
 - ディスプレイ未接続の状態で、`run` が「接続を待っています」と記録して待機し、SIGTERM で正常に終わることを確認済み
+- **別の Mac（MacBook）で使う場合**（2026-10-09 にユーザーが質問）: プログラムとログは、ディスプレイをつないだ Mac の上にある。ディスプレイには何も残らない。MacBook では README の「別の Mac（MacBook など）で使う」の手順（clone・venv・Claude Code のログイン・自動起動の登録）を行い、ログは MacBook の `~/Library/Logs/claude-usage-display.log` で見る。ディスプレイがつながっていない Mac は API を呼ばない（10 秒ごとに接続を確かめるだけ）
 - **利用枠の API の 429（取得の間隔を空けています）**: 2026-10-09 22:15:03（22:18:28 に戻る）と 22:56:29（22:59:57 に戻る）に出た。このツールの間隔は 120 秒のままで、同じ API を同じトークンで呼ぶ Orca（`/Applications/Orca.app`、10 月 7 日から起動中。`app.asar` の中で `https://api.anthropic.com/api/oauth/usage` を呼ぶことを確認）が動いていた。VS Code は起動しておらず、Claude Usage Meter は呼んでいない。どちらが上限に触れたかは、このときのログに Retry-After を残していなかったため分からない。ユーザーの指示で、429 は毎回「Retry-After の値・秒数・名前に ratelimit を含む応答の見出し・次の取得の時刻」を、戻ったときは止まっていた長さを、ログに残すようにした（2026-10-09 23 時台）。Orca が呼ぶ頻度は、`app.asar` の API の呼び出しの前後からは見つからなかった
 
 ### ファイル
