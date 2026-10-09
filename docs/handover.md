@@ -210,6 +210,8 @@ scripts/uninstall-launch-agent.sh                                 # 自動起動
   - Linux では、シリアル（`cdc_acm`）経由だと約 250 バイトの 1 回で詰まり、libusb で同じ端点に直接書くと動いた、という報告がある（#1075、1 台で検証、open）。同じ機種がシリアル経由でも動いたという反論もある（同 issue の Goliohs のコメント。紹介された実装のリポジトリ `Goliohs/turzx-native-monitor` は 2026-10-09 に GitHub が 404 を返した）
   - 明るさは `SET_BRIGHTNESS`（`0x7b`）、向きはソフトで画像を回す。画面の一部だけを書き換える `UPDATE_BITMAP` もある（`lcd_comm_rev_c.py`）。ライブラリの `auto_detect_com_port` が起こす対象に挙げるシリアルは `USB7INCH`・`CT21INCH`・`CT88INCH` と `1a86:ca21` で、`CT50INCH`（`ca50`）は含まない（142・144 行目）
 - **macOS で rev C を動かした報告は見つからなかった**（2026-10-09。issue #7 の全 46 コメントは 3.5 インチ rev A の話だけ。題名に mac を含む issue 3 件（#7・#516・#776）も rev C に触れていない。`USB7INCH`・`ca21`・`rev C`・`5 inch`・`5inch`・`5"` で issue を検索した結果も、macOS の報告は無し）。届いたら、(1) ブリッジのシリアルポートを開いて起こせるか (2) 起きた機種のインターフェースを libusb で確保できるか (3) 全画面を送って `full_png_sucess` が返るか、の順に確かめる
+- **ライブラリの外も調べた結果（2026-10-09）**: ウェブ検索と、GitHub のコード検索（`chs_5inch` を含むリポジトリ約 20 件）でも、macOS で rev C を動かした例は見つからなかった。プロトコルの文書を持つ `alexwbaule/turing-screen`（Go、README は「Linux Driver」）と `slipalison/bezel`（Rust、GPL-3.0、Linux と Windows。rev C は「serial + wake MCU」で、実機で確かめたのは 8.8 インチ）は、どちらも macOS に対応していない。ライブラリのリリースノートで macOS に触れた 3.9.2（2025-04-01）は issue #7（3.5 インチ rev A）の修正で、3.10.0（2026-04-12）の「USB で通信し libusb を使う新しい機種」は 5.2 インチ（1280×720）などの新しい世代の話で、800×480 の 5 インチ（rev C、3.0.0 から対応）ではない
+- **rev A の 5 インチの購入先**: ライブラリの README が UsbPCMonitor 3.5"/5" として紹介する AliExpress の商品 1005003931363455 は、2026-10-09 の時点で商品名が「3.5 インチ」だが、商品画像に 5 インチの品（800×480、77×121 mm、USB-TYPEC、金属、黒と白。側面に USB-C が 2 つで SD カードの差し込み口なし）が載っている。選べる種類（SKU）はページの HTML からは取れなかった
 - 電源: USB-C⇔USB-C で電源が入るか（ディスプレイ側が Rd を示すか）は、商品画像と issue からは分からなかった。3.5 インチと同じく、USB ハブの USB-A 端子と USB-A⇔USB-C ケーブルなら給電できる（§4-7）
 
 ## 5. 残っている作業（上から順に）
