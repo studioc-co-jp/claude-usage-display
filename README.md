@@ -40,6 +40,8 @@ nuits_jp（NAKAMURA Atsushi）さんの X の記事「[AI専用ダッシュボ�
 
 ## Mac で動かすまでの経緯
 
+作った経緯と、実機で分かったことは、記事「[Claude Codeの利用枠を3.5インチ外部モニターに出力した](https://studioc.co.jp/tech/claude-code-usage-on-mac-usb-display/)」（株式会社studio C の技術ブログ、2026-10-09）にまとめています。
+
 記事の Token Dashboard（`nuitsjp/token-dashboard`、MIT、Go）は Windows 用で、Mac では使えません。同リポジトリの `docs/project.md` は、動作環境を Windows 11（x64）と TURZX 9.2 インチに限り、「Windows 以外の OS」と「TURZX 9.2インチ以外の機種」を対象外と明記しています。配布物も Windows 用のインストーラー（v0.1.6 では `token-monitor-turzx-0.1.6-amd64-setup.exe`）だけです。そこで、Mac で動く版を別に作りました。
 
 | 項目 | Token Dashboard | このリポジトリ |

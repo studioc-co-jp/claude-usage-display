@@ -27,7 +27,7 @@ Claude Code の利用枠 3 つ（**5 時間・週次・Fable 週次**）を、Ma
 
 2026-10-05 夕方、このディレクトリで起動したセッションが §5 の 1〜5 を終えた時点の状態。2026-10-09 にディスプレイが届き、§5-6 の 1〜6 と 8 を終え、7 の登録まで済ませた（§4-7・§4-8）。
 
-- **GitHub `studioc-co-jp/claude-usage-display`（private）の `main` に push 済み。**2026-10-05 に作成者のメールアドレスを非公開用に書き換えるため、GitHub 上のリポジトリを作り直して push し直し、そのあと会社の組織 `studioc-co-jp` へ移した（§6）
+- **GitHub `studioc-co-jp/claude-usage-display` の `main` に push 済み。2026-10-09 に public にした（§5-8）。**2026-10-05 に作成者のメールアドレスを非公開用に書き換えるため、GitHub 上のリポジトリを作り直して push し直し、そのあと会社の組織 `studioc-co-jp` へ移した（§6）
 - **自動起動は登録済み**（2026-10-09 08:22 に既定のオプションで登録し直し、ログに「ディスプレイに接続しました」が出た。§5-6 の 7）。ディスプレイをつなぐ前に一度解除していた（§5-6 の 1）。2026-10-05 に登録したとき（既定のオプション。`~/Library/LaunchAgents/jp.co.studioc.claude-usage-display.plist`、ログは `~/Library/Logs/claude-usage-display.log`）に確かめたことは次のとおり
   - 登録・オプションを変えての登録し直し・誤ったオプションの拒否・解除・強制終了後の起動し直し（約 3 秒）を実際に動かして確かめた
   - launchd から起動しても Keychain の読み取りと利用枠の取得が通ることを、`preview` を 1 回だけ動かす使い捨てのジョブで確かめた（§4-6）
@@ -270,7 +270,7 @@ scripts/uninstall-launch-agent.sh                                 # 自動起動
    7. **自動起動を登録し直す**（2026-10-09 08:22 に既定のオプションで登録し、ログで接続を確認済み。ログアウトしてログインし直したあとの表示は、ユーザーが次にログインし直したときに確かめる）: `scripts/install-launch-agent.sh`。手順 4・6 で決めたオプションがあれば付ける（例: `scripts/install-launch-agent.sh --flip --brightness 40`）。ログアウトしてログインし直したあとも表示されることと、`~/Library/Logs/claude-usage-display.log` に「ディスプレイに接続しました」が出ることを確かめる
    8. **Mac 本体の USB-C 端子で電源が入らない原因を確定させる**（2026-10-09 済み。§4-7）: L 字アダプターなし・両方の向きで入らないことを確かめたうえで、同じ USB-C⇔USB-C ケーブルで iPhone を本体の USB-C 端子につなぎ、認識されることを確かめた（08:58）。ケーブルの CC と本体の端子は正常で、原因はディスプレイ側の USB-C 端子（Rd を示していない）と確定した
 7. **実機で分かったことを書き残す**: 確保の可否、向き、色、明るさ、転送時間、ゲージ型の見え方、写真を、`docs/article-material.md` §10 に書く。作業の判断に関わること（エラーと対処など）は、この文書の §4 にも追記する
-8. **公開と記事**: §6 の「認証の扱い」を決める → 必要なら実装を直す → README に、規約上の位置づけと、公式に説明されていない API を使っていることを明記する（2026-10-09 ユーザーが決定。`docs/article-material.md` §12 の 10）→ リポジトリを public にする → `~/projects/studioc` で起動したセッションが `/techblog-write` で記事を書く（素材は `docs/article-material.md`）
+8. **公開と記事**（2026-10-09 済み）: 認証の扱いは「今の方式のまま公開し、README と記事に規約上の位置づけを明記する」とユーザーが決めた。README に規約上の位置づけを書き（`0e10883`）、§6 の確認（履歴にトークン・個人のアドレス・IP・API の生の応答が無いこと）をしてから public にし、記事を公開した（https://studioc.co.jp/tech/claude-code-usage-on-mac-usb-display/ 、タイトル「Claude Codeの利用枠を3.5インチ外部モニターに出力した」、studioc の `0abfec0`）。記事はユーザーの指示で、このリポジトリで起動したセッションが studioc の `.claude/skills/techblog-write/SKILL.md` と `docs/tech_blog_writing_guide.md` を読んで同じ手順で書いた。公開日はユーザーの指示で当日（金曜。火曜・木曜の枠の外）。X への告知はユーザーが手動で行う（定時の `x-announce.yml` は朝 7:00 に当日分だけを告知するので、この記事は自動では告知されない）。当初の手順は次のとおり: §6 の「認証の扱い」を決める → 必要なら実装を直す → README に、規約上の位置づけと、公式に説明されていない API を使っていることを明記する（2026-10-09 ユーザーが決定。`docs/article-material.md` §12 の 10）→ リポジトリを public にする → `~/projects/studioc` で起動したセッションが `/techblog-write` で記事を書く（素材は `docs/article-material.md`）
 9. **5 インチのディスプレイ**（購入予定。届くのが再開の条件）: 機種を判定する（§4-9。`system_profiler SPUSBHostDataType` の ID とシリアル、SD カードの差し込み口）→ rev C なら `turing.py` に rev C の通信を足す（仕様だけを使って自前で書く）→ 画面の配置を 800×480 に作り直す → 実機で確かめる → 別の記事にする（`docs/article-material.md` §12 の 4）
 
 ## 6. 公開するときに確かめること
@@ -301,5 +301,5 @@ scripts/uninstall-launch-agent.sh                                 # 自動起動
   - 組織名の `studioc` と `studio-c` は、無関係の第三者が使っている（2017 年作成の個人アカウントと、ラスベガスの組織「Studio C」）
 - ライセンスは **MIT**、著作権者は **株式会社studio C**（2026-10-05 ユーザーが決定。`LICENSE` の本文は GitHub の Licenses API の `mit` から作成）
 - 履歴にトークンや API の生の応答が入っていないこと（2026-10-05 の初回 commit の前に、トークンらしき文字列・個人のパス・fixture の項目を検査済み）
-- 公開範囲の変更は `GH_TOKEN=$(security find-generic-password -s gh-token-studioc-co-jp -w) gh repo edit studioc-co-jp/claude-usage-display --visibility public --accept-visibility-change-consequences` で行う（§3 の組織用のトークン）。GitHub の画面から変えてもよい
+- 公開範囲の変更は `GH_TOKEN=$(security find-generic-password -s gh-token-studioc-co-jp -w) gh repo edit studioc-co-jp/claude-usage-display --visibility public --accept-visibility-change-consequences` で行う（§3 の組織用のトークン）。GitHub の画面から変えてもよい。**2026-10-09 にこのコマンドで public にした**（認証なしで `https://github.com/studioc-co-jp/claude-usage-display` が HTTP 200 を返すことを確認）
 - フォント: 画面は macOS に入っているフォント（SF Pro Rounded・ヒラギノ角ゴシック）で描く。リポジトリにはフォントのファイルを含めず、`/System/Library/Fonts/` のパスで参照するだけである。macOS の使用許諾契約（この Mac の `/Library/Documentation/License.lpdf`、日本語版 2 条 E「フォント」）は「Apple ソフトウェアの実行中にコンテンツを表示およびプリントするために、Apple ソフトウェアに含まれるフォントを使用することができます」「当該フォントに付属する埋め込み制限で許可されている場合のみ、コンテンツ内にフォントを埋め込むことができます」と定める。このプログラムは、macOS 上で実行中にこれらのフォントで画面を描き、ディスプレイに表示する。README・記事に載せる画像は描いた結果の画素で、フォントのデータは含まない
