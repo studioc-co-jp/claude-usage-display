@@ -1,12 +1,18 @@
 import argparse
 import errno
+import io
 import unittest
 from datetime import datetime, timezone
 from unittest import mock
 
+from PIL import Image
+
 from claude_usage_display import __main__ as cli
 from claude_usage_display.turing import Command, encode_command
+from claude_usage_display.turzx_usb import CMD_PNG, CMD_SYNC
 from claude_usage_display.usage import Meter, Snapshot, UsageError
+from tests.test_turzx_usb import FakeTransport as FakeTurzxTransport
+from tests.test_turzx_usb import decrypt
 
 LANDSCAPE_HEADER = encode_command(Command.DISPLAY_BITMAP, 0, 0, 479, 319)
 
@@ -58,6 +64,12 @@ class FailOnFrame:
 
 
 class RunnerTest(unittest.TestCase):
+    def setUp(self):
+        # 5.2 インチは先に探されるので、ここでは未接続にして 3.5 インチ（rev A）の経路を試す
+        patcher = mock.patch.object(cli.TurzxUsbTransport, "open", side_effect=cli.DeviceNotFound("未接続"))
+        patcher.start()
+        self.addCleanup(patcher.stop)
+
     def test_connects_fetches_and_sends_one_full_frame(self):
         runner = cli.Runner(make_args())
         transport = StopAfterFrames(runner)
@@ -114,6 +126,50 @@ class RunnerTest(unittest.TestCase):
                 self.assertIsNone(runner.display)
                 record = logs.records[0]
                 self.assertEqual((record.levelname, record.exc_info is not None), (level, traceback))
+
+
+class StopAfterImage(FakeTurzxTransport):
+    """5.2 インチの偽の送信路。画像を 1 枚受け取ったら、ループに終了の合図を出す。"""
+
+    def __init__(self, runner):
+        super().__init__()
+        self.runner = runner
+
+    def write(self, data):
+        super().write(data)
+        if decrypt(data)[0] == CMD_PNG:
+            self.runner.stop.set()
+
+
+class TurzxRunnerTest(unittest.TestCase):
+    def test_prefers_turzx_and_sends_letterboxed_portrait_png(self):
+        runner = cli.Runner(make_args())
+        transport = StopAfterImage(runner)
+        with mock.patch.object(cli.TurzxUsbTransport, "open", return_value=(transport, 0x0050)), \
+                mock.patch.object(cli.UsbTransport, "open") as rev_a, \
+                mock.patch.object(cli, "fetch_snapshot", return_value=snapshot()):
+            self.assertEqual(runner.loop(), 0)
+        rev_a.assert_not_called()
+        self.assertTrue(transport.drained)
+        self.assertEqual(transport.commands()[0], CMD_SYNC)
+        sent = Image.open(io.BytesIO(transport.writes[-1][512:])).convert("RGB")
+        self.assertEqual(sent.size, (720, 1280))
+        # 480×320 を 2.25 倍の 1080×720 にして中央に置くので、横向きの左右 100 ピクセルは黒い。
+        # 縦長に回した後は、上下の 100 ピクセルに当たる
+        self.assertEqual(sent.getpixel((360, 50)), (0, 0, 0))
+        self.assertEqual(sent.getpixel((360, 1229)), (0, 0, 0))
+        self.assertNotEqual(sent.getpixel((360, 640)), (0, 0, 0))
+
+
+class FitToTest(unittest.TestCase):
+    def test_same_size_is_returned_as_is(self):
+        image = Image.new("RGB", (480, 320))
+        self.assertIs(cli.fit_to(image, (480, 320)), image)
+
+    def test_keeps_aspect_ratio_and_centers(self):
+        fitted = cli.fit_to(Image.new("RGB", (480, 320), (255, 255, 255)), (1280, 720))
+        self.assertEqual(fitted.size, (1280, 720))
+        self.assertEqual(fitted.getbbox(), (100, 0, 1180, 720))
 
 
 class ArgumentsTest(unittest.TestCase):

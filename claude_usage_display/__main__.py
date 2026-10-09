@@ -4,6 +4,8 @@
     python -m claude_usage_display probe                          ディスプレイの USB 情報を出す
     python -m claude_usage_display test-pattern                   向きと色の確認画面を出す
     python -m claude_usage_display run                            常駐して表示し続ける
+
+ディスプレイは、TURZX の 5.2 インチ（turzx_usb.py）を先に探し、無ければ 3.5 インチ（rev A、turing.py）を使う。
 """
 
 from __future__ import annotations
@@ -16,18 +18,47 @@ import threading
 import time
 from datetime import datetime, timedelta, timezone
 
+from PIL import Image
+
 from . import gauge, render
 from .render import render_test_pattern
-from .turing import PID, VID, DeviceNotFound, TuringRevA, UsbTransport, is_disconnected, to_rgb565le
+from .turing import PID, VID, DeviceNotFound, TuringRevA, UsbTransport, is_disconnected
+from .turzx_usb import MODELS as TURZX_MODELS
+from .turzx_usb import VID as TURZX_VID
+from .turzx_usb import TurzxUsb, TurzxUsbTransport
 from .usage import Meter, Snapshot, UsageError, fetch_snapshot, meter_labels
 
 log = logging.getLogger("claude_usage_display")
 
 DEVICE_RETRY_SECONDS = 10
+DEVICE_IDS = "・".join([f"{TURZX_VID:04x}:{pid:04x}" for pid in TURZX_MODELS] + [f"{VID:04x}:{PID:04x}"])
 
 # 画面のデザイン。classic は最初に作った横棒の画面
 THEMES = {"gauge": gauge.render, "classic": render.render}
 DEFAULT_THEME = "gauge"
+
+
+def open_display(flipped: bool) -> TuringRevA | TurzxUsb:
+    """つながっているディスプレイを開く。TURZX の 5.2 インチを先に探し、無ければ 3.5 インチ（rev A）。"""
+    try:
+        transport, pid = TurzxUsbTransport.open()
+    except DeviceNotFound:
+        return TuringRevA(UsbTransport.open(), flipped=flipped)
+    return TurzxUsb(transport, pid, flipped=flipped)
+
+
+def fit_to(image: Image.Image, size: tuple[int, int]) -> Image.Image:
+    """大きさの違う画面へ、縦横比を保って拡大・縮小し、黒地の中央に置く。
+
+    画面のデザインは 480×320 だけなので、5.2 インチ（1280×720）用の配置を作るまでのつなぎに使う。
+    """
+    if image.size == size:
+        return image
+    scale = min(size[0] / image.width, size[1] / image.height)
+    resized = image.resize((round(image.width * scale), round(image.height * scale)), Image.Resampling.LANCZOS)
+    canvas = Image.new("RGB", size)
+    canvas.paste(resized, ((size[0] - resized.width) // 2, (size[1] - resized.height) // 2))
+    return canvas
 
 
 def _demo_snapshot(now: datetime, model: str) -> Snapshot:
@@ -54,17 +85,10 @@ def cmd_preview(args) -> int:
     return 0
 
 
-def cmd_probe(args) -> int:
+def _describe(device) -> None:
     import usb.core
     import usb.util
 
-    from .turing import _libusb_backend
-
-    device = usb.core.find(idVendor=VID, idProduct=PID, backend=_libusb_backend())
-    if device is None:
-        print(f"{VID:04x}:{PID:04x} は接続されていません")
-        return 1
-    print(f"{VID:04x}:{PID:04x} bus={device.bus} address={device.address}")
     for field in ("manufacturer", "product", "serial_number"):
         try:
             print(f"  {field}: {usb.util.get_string(device, getattr(device, 'i' + field.title().replace('_', '')))}")
@@ -84,21 +108,51 @@ def cmd_probe(args) -> int:
                 direction = "IN" if usb.util.endpoint_direction(endpoint.bEndpointAddress) else "OUT"
                 print(f"      endpoint 0x{endpoint.bEndpointAddress:02x} {direction} type={kind} "
                       f"max_packet={endpoint.wMaxPacketSize}")
-    try:
-        UsbTransport.open().close()
-        print("インターフェースを確保できました")
-    except Exception as e:  # noqa: BLE001 - 原因をそのまま見せる
-        print(f"インターフェースを確保できません: {e!r}")
+
+
+def cmd_probe(args) -> int:
+    import usb.core
+
+    from .turing import _libusb_backend
+
+    known = {(VID, PID): "3.5 インチ（rev A）"}
+    known.update({(TURZX_VID, pid): f"TURZX {name}" for pid, (name, _w, _h) in TURZX_MODELS.items()})
+    # 同じ機種名でも中身の世代が違う個体があるため（docs/handover.md §4-9）、知らない ID も一覧に出す
+    devices = list(usb.core.find(find_all=True, backend=_libusb_backend(),
+                                 custom_match=lambda d: d.idVendor in (VID, TURZX_VID)))
+    if not devices:
+        print(f"{VID:04x}:xxxx・{TURZX_VID:04x}:xxxx の機器は接続されていません")
         return 1
+    for device in devices:
+        name = known.get((device.idVendor, device.idProduct), "対応していない ID")
+        print(f"{device.idVendor:04x}:{device.idProduct:04x} {name} bus={device.bus} address={device.address}")
+        _describe(device)
+    found = {(d.idVendor, d.idProduct) for d in devices} & known.keys()
+    if not found:
+        print("対応している ID の機器がありません")
+        return 1
+    for vid, pid in sorted(found):
+        try:
+            if vid == TURZX_VID:
+                TurzxUsbTransport.open()[0].close()
+            else:
+                UsbTransport.open().close()
+            print(f"{known[(vid, pid)]}: インターフェースを確保できました")
+        except Exception as e:  # noqa: BLE001 - 原因をそのまま見せる
+            print(f"{known[(vid, pid)]}: インターフェースを確保できません: {e!r}")
+            return 1
     return 0
 
 
 def cmd_test_pattern(args) -> int:
-    display = TuringRevA(UsbTransport.open(), flipped=args.flip)
+    display = open_display(args.flip)
     try:
         display.initialize(args.brightness)
-        display.show(render_test_pattern())
+        display.show(render_test_pattern((display.width, display.height)))
     finally:
+        if isinstance(display, TurzxUsb):  # 応答の形を実機で確かめるため、届いた応答をそのまま見せる
+            for command, response in display.history:
+                print(f"命令 {command} の応答: {response[:16].hex(' ')}")
         display.close()
     print("確認画面を送りました。左上に赤と「左上」が見えれば向きは正しいです。")
     return 0
@@ -108,7 +162,7 @@ class Runner:
     def __init__(self, args):
         self.args = args
         self.stop = threading.Event()
-        self.display: TuringRevA | None = None
+        self.display: TuringRevA | TurzxUsb | None = None
         self.snapshot: Snapshot | None = None
         self.status: str | None = None
         self.next_fetch = 0.0
@@ -123,10 +177,10 @@ class Runner:
 
     def _connect(self) -> bool:
         try:
-            display = TuringRevA(UsbTransport.open(), flipped=self.args.flip)
+            display = open_display(self.args.flip)
         except DeviceNotFound:
             if not self.waiting_logged:
-                log.info("ディスプレイの接続を待っています（%04x:%04x）", VID, PID)
+                log.info("ディスプレイの接続を待っています（%s）", DEVICE_IDS)
                 self.waiting_logged = True
             return False
         except Exception as e:  # noqa: BLE001
@@ -149,7 +203,7 @@ class Runner:
         return True
 
     @staticmethod
-    def _close(display: TuringRevA) -> None:
+    def _close(display: TuringRevA | TurzxUsb) -> None:
         try:
             display.close()
         except Exception:  # noqa: BLE001
@@ -185,10 +239,11 @@ class Runner:
             self._fetch_if_due()
             image = THEMES[self.args.theme](self.snapshot, datetime.now(timezone.utc), self.status,
                                             meter_labels(self.args.model))
-            frame = to_rgb565le(image)
+            image = fit_to(image, (self.display.width, self.display.height))
+            frame = image.tobytes()
             if frame != self.last_frame:
                 try:
-                    self.display.show_frame(frame)
+                    self.display.show(image)
                     self.last_frame = frame
                     if self.args.save_png:
                         image.save(self.args.save_png)

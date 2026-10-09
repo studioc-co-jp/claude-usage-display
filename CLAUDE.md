@@ -12,6 +12,7 @@ Claude Code の利用枠（5 時間・週次・Fable 週次）を、USB でつ�
 - 利用枠 API の生の応答をリポジトリに入れない。fixtures には使う項目だけを残す。トップレベルにある用途不明の項目（社内コード名に見える名前）は、fixtures にも記事にも載せない
 - **GPL-3.0 のコード（`mathoudebine/turing-smart-screen-python` と gist `amarok30/cddaa9a9…`）を流用しない。**使ってよいのは仕様（コマンド番号・バイト配置・転送の規則）だけで、コードは自前で書く
 - macOS ではシリアル（`/dev/cu.usbmodem…`）で送らない。`claude_usage_display/turing.py` の docstring にある 4 つの規則（コマンドは 1 転送ずつ・`SET_ORIENTATION` は 11 バイト・画素は 64 バイトの倍数で区切る・画素の途中にほかを書かない）を崩さない
+- 5.2 インチ（TURZX の新しい世代、`1cbe:0050`）の送信部は `claude_usage_display/turzx_usb.py`。仕様の出典はその docstring（ライブラリの `lcd_comm_turing_usb.py` は GPL なので仕様だけを読む）。**実機ではまだ確かめていない**（2026-10-09 時点）。届いたら `docs/handover.md` §5-9 の手順で確かめる
 - 記事はこのリポジトリに置かない。`~/projects/studioc` で起動したセッションが `/techblog-write` で書く。素材（調べた事実と出典、実機で分かったこと）は `docs/article-material.md` に残す。実機で分かったことは同文書の §10 に追記する
 - commit は `git commit --only -m "…" -- <パス>` で行う。新規ファイルは先に `git add <そのパス>`。`git add -A` / `git add .` は使わない（hook が止める）
 - **commit の作成者のメールアドレスは、GitHub の非公開用アドレスにする。**このリポジトリだけ `git config --local user.email "75772838+blacksawa@users.noreply.github.com"` を設定してある（clone し直したら設定し直す）。commit の前に `git config user.email` を確かめる。個人のメールアドレスは、ファイルにも commit メッセージにも書かない（2026-10-05 に履歴を書き換えて消した。経緯は `docs/handover.md` §6）

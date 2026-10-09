@@ -162,17 +162,21 @@ def render(snapshot: Snapshot | None, now: datetime, status: str | None = None,
     return image
 
 
-def render_test_pattern() -> Image.Image:
-    """向きと色の確認用。左上に「左上」、四隅に色、中央に解像度を出す。"""
-    image = Image.new("RGB", (WIDTH, HEIGHT), SURFACE)
+def render_test_pattern(size: tuple[int, int] = (WIDTH, HEIGHT)) -> Image.Image:
+    """向きと色の確認用。左上に「左上」、四隅に色、中央に解像度を出す。文字は高さに合わせて大きくする。"""
+    width, height = size
+    scale = height / HEIGHT
+    image = Image.new("RGB", size, SURFACE)
     draw = ImageDraw.Draw(image)
-    half_w, half_h = WIDTH // 2, HEIGHT // 2
+    half_w, half_h = width // 2, height // 2
     for (x, y), color in zip(((0, 0), (half_w, 0), (0, half_h), (half_w, half_h)),
                              ((255, 0, 0), (0, 255, 0), (0, 0, 255), (255, 255, 255))):
         draw.rectangle((x, y, x + half_w - 1, y + half_h - 1), fill=color)
-    draw.text((12, 36), "左上", font=font(28, 6), fill=INK, anchor="ls")
-    draw.text((half_w + 12, 36), "緑", font=font(28, 6), fill=SURFACE, anchor="ls")
-    draw.text((12, half_h + 36), "青", font=font(28, 6), fill=INK, anchor="ls")
-    draw.text((WIDTH // 2, HEIGHT // 2), f"{WIDTH}×{HEIGHT}", font=font(30, 6), fill=SURFACE,
-              anchor="mm", stroke_width=3, stroke_fill=INK)
+    label = font(round(28 * scale), 6)
+    left, base = round(12 * scale), round(36 * scale)
+    draw.text((left, base), "左上", font=label, fill=INK, anchor="ls")
+    draw.text((half_w + left, base), "緑", font=label, fill=SURFACE, anchor="ls")
+    draw.text((left, half_h + base), "青", font=label, fill=INK, anchor="ls")
+    draw.text((half_w, half_h), f"{width}×{height}", font=font(round(30 * scale), 6), fill=SURFACE,
+              anchor="mm", stroke_width=round(3 * scale), stroke_fill=INK)
     return image

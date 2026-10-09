@@ -76,6 +76,7 @@ nuits_jp（NAKAMURA Atsushi）さんの X の記事「[AI専用ダッシュボ�
 | 項目 | 内容 |
 |---|---|
 | ディスプレイ | Turing Smart Screen 3.5 インチ（rev A）。USB の ID が `1a86:5722`、シリアル番号が `USB35INCHIPSV2` のもの |
+| ディスプレイ（送信部のみ） | TURZX 5.2 インチ（1280×720、USB の ID が `1cbe:0050`）。**実機ではまだ試していません**（2026-10-09 時点）。画面のデザインは 480×320 だけなので、縦横比を保って拡大し、黒地の中央に出します |
 | Mac | macOS。Homebrew が使えること |
 | Claude Code | Claude のサブスクリプション（Pro・Max）でログインしていること。動作を確かめたのは Max（5x）です |
 
@@ -88,6 +89,8 @@ system_profiler SPUSBHostDataType | grep -B8 -A2 'USB Product ID: 0x5722'
 ```
 
 macOS 27 には `SPUSBDataType` がありません。`SPUSBHostDataType` を使います。
+
+5.2 インチと 3.5 インチの両方がつながっているときは、5.2 インチを使います。
 
 ## 準備
 
@@ -129,7 +132,7 @@ python3 -m venv .venv
 
 モデル別の週次上限は、既定で Fable のものを出します。別のモデルの上限を出すときは、コマンドの前に `--model` を付けます（例: `.venv/bin/python -m claude_usage_display --model Opus run`）。その上限が無いプランでは、値の代わりに「--」（横棒の画面では「—」）が出ます。
 
-初めてつないだときは、`probe` → `test-pattern` → `run` の順に試してください。自動起動を登録している場合は、先に `scripts/uninstall-launch-agent.sh` で止めます。2 つのプロセスが同じディスプレイへ書くと、パネルが画素を数え違えて画面が崩れるためです。
+初めてつないだときは、`probe` → `test-pattern` → `run` の順に試してください。5.2 インチでは、`test-pattern` が、送った命令ごとの応答（先頭 16 バイト）も表示します。自動起動を登録している場合は、先に `scripts/uninstall-launch-agent.sh` で止めます。2 つのプロセスが同じディスプレイへ書くと、パネルが画素を数え違えて画面が崩れるためです。
 
 ## 自動起動
 
@@ -183,6 +186,8 @@ tail -f ~/Library/Logs/claude-usage-display.log
 
 macOS では、ディスプレイをシリアルポート（`/dev/cu.usbmodem…`）として扱うと画像が崩れます。macOS の CDC ドライバーが USB 転送を分割・結合し、パネルのファームウェアが転送の単位でコマンドと画素を区別しているためです。そこでシリアルを使わず、コマンドを 1 つずつ別の転送で送り、画素を 64 バイトの倍数で区切って送っています。
 
+5.2 インチ（TURZX の新しい世代）は、シリアルではなくベンダー独自の USB のインターフェースで通信します。1 回の書き込みに、暗号化した 512 バイトの見出し（DES-CBC）と PNG の画像をまとめて送り、応答を 1 つ読んで確かめます。パネルの本来の向きは縦長（720×1280）なので、横向きの画像を 90 度回して送ります。
+
 ## 参考にしたもの
 
 - nuits_jp さんの X の記事「[AI専用ダッシュボードの作り方](https://x.com/nuits_jp/status/2106686059509883050)」と [nuitsjp/token-dashboard](https://github.com/nuitsjp/token-dashboard)（着想。USB ディスプレイに AI ツールの利用状況を常時表示する作り）
@@ -192,6 +197,7 @@ macOS では、ディスプレイをシリアルポート（`/dev/cu.usbmodem…
 - [mathoudebine/turing-smart-screen-python](https://github.com/mathoudebine/turing-smart-screen-python) の `library/lcd/lcd_comm_rev_a.py`（rev A のコマンド番号・コマンドの形式・画素の形式）
 - 同リポジトリの [issue #7「Screen displays corrupted images on Mac」](https://github.com/mathoudebine/turing-smart-screen-python/issues/7)と、そこで報告された [macOS 用の実装](https://gist.github.com/amarok30/cddaa9a9818d6830a74d9332f501047e)（macOS で画像が崩れる原因と回避策）
 - [junhoyeo/tokscale](https://github.com/junhoyeo/tokscale) の `crates/tokscale-cli/src/commands/usage/claude.rs`（利用枠 API の呼び方）
+- turing-smart-screen-python の `library/lcd/lcd_comm_turing_usb.py`、[nuitsjp/token-dashboard](https://github.com/nuitsjp/token-dashboard) の `internal/turzx/`、[phstudy/turing-smart-screen-cli](https://github.com/phstudy/turing-smart-screen-cli) の `src/turingscreencli/transport.py`（5.2 インチの見出しの形式・応答・明るさの命令・画像の向き）
 
 ## ライセンス
 
