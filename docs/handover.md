@@ -199,6 +199,17 @@ scripts/uninstall-launch-agent.sh                                 # 自動起動
 - rev A の 5 インチ（UsbPCMonitor 5"）: HELLO（6 バイト）の応答で 3.5・5・7 インチを見分け、5 インチは 480×800（`lcd_comm_rev_a.py` 95〜120 行目）。いまの `turing.py` は応答を読まない
 - そのまま使えるもの: `usage.py`（Keychain と利用枠の取得）、`launchd/`・`scripts/`。作り直すもの: 通信部（rev C なら新しく書く）と、画面の配置（480×320 前提の画素の値を 800×480 に。5 インチ・800×480 は計算で約 187 ppi）
 - macOS では、rev A はシリアル経由だと画面が崩れたので libusb でじかに書いている（§4-3）。rev C は起こすのにシリアルポートを開くので、macOS でどう送れるかは実機で確かめる
+- **購入候補の商品（2026-10-09 調査）**: AliExpress の商品 ID 1005011742654881（「5インチ IPS Type-C モニター 800x480 ブラック」。ユーザーが共有した短縮リンク `https://a.aliexpress.com/_c34x7IpT` の行き先）。ページは JavaScript で描くため、HTML から取れたのは商品名と商品画像 6 枚だけ（仕様の表とストア名は取れなかった）
+  - 商品画像の内容: 画面に TURZX の表示、側面に「Type-C port」と「TF card slot」、背面に「TURING SMART SCREEN」のラベル、800×480、122×78×10 mm、アルミの筐体、SD カードの動画・写真を PC なしで再生、付属品に「5Pin to USB-C」「9Pin Cable」「USB cable」（マザーボードの USB 端子につなぐもの）と卓上・ファンのブラケット
+  - **wiki「Hardware revisions」の Turing Smart Screen 5" に当たる**（SD カードの差し込み口、USB-C が 1〜2 個、マザーボード用の MX-1.25 のコネクター、黒と白、公式ソフトは Windows 用の `UsbMonitorL.exe`）。UsbPCMonitor 5"（rev A）は USB-C が 2 個で SD カードの差し込み口が無いので違う。したがって **rev C**
+- **rev C の 5 インチの通信（issue #1030・#1075 とそのコメント。どちらも Linux）**
+  - USB には 2 つの姿で現れる。休止中は CH552T のブリッジ（`1a86:ca21`・シリアル `CT21INCH`、または `1a86:ca50`・`CT50INCH`、製品名 `UsbMonitor`）。起こすと別の機種（`1d6b:0106`、ときに `0525:a4a7`、製品名 `Android`、シリアル `20080411`）として現れ、通信はこちらのバルク OUT `0x01`・IN `0x81` で行う（#1030 の Windows の通信の記録）
+  - HELLO の応答は `chs_5inch.dev1_rom1.88` または `.89`。画面全体は 800×480 の BGRA（1 画面 1,536,000 バイト）で、命令 `c8 ef 69 00 17 70` と大きさ `0x0E10` の後に、249 バイトごとに `0x00` を挟んで送る（`lcd_comm_rev_c.py` 87・352〜363・393〜395 行目、#1075 のコメント）。送り終えて 1〜3 秒後に `full_png_sucess` が返る
+  - 画素を途中で途切れさせると、USB をつなぎ直すまで HELLO も通らなくなる（#1075・#1030 のコメント、Goliohs、2026-09-24）
+  - Linux では、シリアル（`cdc_acm`）経由だと約 250 バイトの 1 回で詰まり、libusb で同じ端点に直接書くと動いた、という報告がある（#1075、1 台で検証、open）。同じ機種がシリアル経由でも動いたという反論もある（同 issue の Goliohs のコメント。紹介された実装のリポジトリ `Goliohs/turzx-native-monitor` は 2026-10-09 に GitHub が 404 を返した）
+  - 明るさは `SET_BRIGHTNESS`（`0x7b`）、向きはソフトで画像を回す。画面の一部だけを書き換える `UPDATE_BITMAP` もある（`lcd_comm_rev_c.py`）。ライブラリの `auto_detect_com_port` が起こす対象に挙げるシリアルは `USB7INCH`・`CT21INCH`・`CT88INCH` と `1a86:ca21` で、`CT50INCH`（`ca50`）は含まない（142・144 行目）
+- **macOS で rev C を動かした報告は見つからなかった**（2026-10-09。issue #7 の全 46 コメントは 3.5 インチ rev A の話だけ。題名に mac を含む issue 3 件（#7・#516・#776）も rev C に触れていない。`USB7INCH`・`ca21`・`rev C`・`5 inch`・`5inch`・`5"` で issue を検索した結果も、macOS の報告は無し）。届いたら、(1) ブリッジのシリアルポートを開いて起こせるか (2) 起きた機種のインターフェースを libusb で確保できるか (3) 全画面を送って `full_png_sucess` が返るか、の順に確かめる
+- 電源: USB-C⇔USB-C で電源が入るか（ディスプレイ側が Rd を示すか）は、商品画像と issue からは分からなかった。3.5 インチと同じく、USB ハブの USB-A 端子と USB-A⇔USB-C ケーブルなら給電できる（§4-7）
 
 ## 5. 残っている作業（上から順に）
 
