@@ -16,6 +16,22 @@ Claude Code の利用枠 3 つ（**5 時間・週次・Fable 週次**）を、Ma
 
 どちらの画面も `preview --demo` で画像として作れます（「使い方」を参照）。
 
+## 規約上の位置づけ（使う前に読んでください）
+
+このツールは、Anthropic とは関係の無い非公式のツールです。次の 2 点を承知したうえで使ってください。
+
+**1. 公式に説明されていない API を使っています。**利用枠は `GET https://api.anthropic.com/api/oauth/usage` から取得しています。この API は Anthropic の公開文書に載っておらず、仕様は保証されていません。
+
+**2. Claude Code のログイン用のトークンを、Claude Code ではないプログラムから使っています。これは規約の文言に当てはまります。**
+
+- [Consumer Terms of Service](https://www.anthropic.com/legal/consumer-terms)（Free・Pro・Max に適用。2025-10-08 発効）の §3「Use of our Services」は、API キーを使う場合と明示の許可がある場合を除き、ボットやスクリプトなどの自動の手段でサービスにアクセスすることを禁じています（"Except when you are accessing our Services via an Anthropic API Key or where we otherwise explicitly permit it, to access the Services through automated or non-human means, whether through a bot, script, or otherwise."）。このツールは、ログイン用のトークンを使い、スクリプトから 2 分ごとに API を呼びます
+- Claude Code の [Legal and compliance](https://code.claude.com/docs/en/legal-and-compliance) の「Authentication and credential use」は、ログイン用の認証（OAuth）を、Claude Code と Anthropic 純正のアプリを普通に使うためのものとしています。そのうえで、第三者の開発者が Free・Pro・Max の資格情報を使ってリクエストを送ることを認めていません
+- 違反と判断された場合について、Consumer Terms の §12「General terms」の Termination は、Anthropic が予告なく利用を停止または解約できること、違反による解約ではサブスクリプションの返金が無いことを定めています
+
+同じ方式（ログイン用のトークンで同じ API を呼ぶ）のツールは、ほかにもあります。2026-10-09 に調べた範囲では、利用枠を読むだけのツールが止められたという報告は見つかりませんでした。ただし、それは規約上認められていることを意味しません。使うかどうかは、上の点を踏まえて判断してください。
+
+規約の範囲で利用枠を見るなら、Claude Code がステータスラインのスクリプトに渡す `rate_limits`（[Customize your status line](https://code.claude.com/docs/en/statusline) の「Rate limit usage」）が公式の経路です。5 時間と週次の使用率・リセット時刻が入っています。モデル別の週次（Fable 週次）は含まれません。このツールは、この経路には対応していません。
+
 ## きっかけ（元の記事）
 
 nuits_jp（NAKAMURA Atsushi）さんの X の記事「[AI専用ダッシュボードの作り方](https://x.com/nuits_jp/status/2106686059509883050)」（2026-10-04）を読んで作りました。
@@ -42,7 +58,7 @@ nuits_jp（NAKAMURA Atsushi）さんの X の記事「[AI専用ダッシュボ�
 3. **利用枠をどこから取るか。**Token Dashboard は、手元の利用枠を同梱の [tokscale](https://github.com/junhoyeo/tokscale) で取得しています。このリポジトリは、tokscale と同じ API（`/api/oauth/usage`）を直接呼びます。tokscale には以前、アクセストークンを更新してログイン情報に書き戻した結果、Claude Code のログインが切れる不具合がありました（[#1001](https://github.com/junhoyeo/tokscale/issues/1001)、修正済み）。同じことが起きないよう、このリポジトリはログイン情報を読むだけにしています
 4. **GPL のコードを持ち込まない。**turing-smart-screen-python と、issue #7 で示された macOS 用の実装は、どちらも GPL-3.0-or-later です（各ファイルの `SPDX-License-Identifier`）。コードは流用せず、コマンド番号・バイトの並び・転送の規則といった仕様だけを使って書いています
 
-いまの状態: ディスプレイが届く前に作ったため、実機での表示はまだ試していません（2026-10-05 時点）。単体テスト、画像の生成、Keychain からの利用枠の取得、launchd での起動と待機までを、この Mac で確かめています。
+いまの状態: 2026-10-09 にディスプレイが届き、Mac mini（M4、macOS 27.0.1）で表示と自動起動まで確かめました。1 画面（307,200 バイト）の転送には約 1.9 秒かかります。速さを決めているのはディスプレイ側の受け取りで、送る区切りの大きさを変えても変わりません。
 
 ## 画面のデザイン
 
@@ -148,6 +164,8 @@ tail -f ~/Library/Logs/claude-usage-display.log
 | 「取得の間隔を空けています」 | API から間隔を空けるよう求められています（HTTP 429）。指示された秒数を待って自動で取り直します |
 | 「通信できません」 | ネットワークを確かめます。つながれば次の取得で戻ります |
 | `probe` で「接続されていません」 | ケーブルがデータ通信に対応しているかと、`system_profiler SPUSBHostDataType` に `USB Product ID: 0x5722` が出るかを確かめます（「対応機種」を参照） |
+| Mac の USB-C 端子に USB-C⇔USB-C ケーブルでつなぐと、電源が入らない | ディスプレイ側の USB-C 端子が、USB-C の受電側の印（CC 端子の Rd）を示していないためです。USB-C の電源側は、この印を見つけるまで 5V を出しません（USB Type-C 仕様 §4.5.1.3.1）。付属の USB-A⇔USB-C ケーブルで USB-A の端子（USB ハブなど）につなぐか、Mac の USB-C 端子に「USB-C（オス）→ USB-A（メス）」の変換アダプターを付けてつなぎます |
+| 電源は入るが、USB の機器として認識されない | ディスプレイとケーブルの間に、USB-C のオス⇔メスの延長アダプター（L 字のものなど）を挟んでいないかを確かめます。メス側にケーブルを挿す向きによって、USB 2.0 の信号が通らないものがあります。外すか、ケーブルを裏返して挿します |
 | 「libusb が見つかりません」 | `brew install libusb` を実行します |
 | 自動起動で動かない | ログと `launchctl print`（「自動起動」を参照）を確かめます |
 | Homebrew の Python を入れ替えたら動かなくなった | `.venv` は作ったときの Python（例: `python@3.14`）を参照します。`rm -rf .venv` のあと「準備」の手順で作り直し、自動起動も登録し直します |
