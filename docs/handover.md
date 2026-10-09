@@ -299,7 +299,10 @@ scripts/uninstall-launch-agent.sh                                 # 自動起動
    8. **Mac 本体の USB-C 端子で電源が入らない原因を確定させる**（2026-10-09 済み。§4-7）: L 字アダプターなし・両方の向きで入らないことを確かめたうえで、同じ USB-C⇔USB-C ケーブルで iPhone を本体の USB-C 端子につなぎ、認識されることを確かめた（08:58）。ケーブルの CC と本体の端子は正常で、原因はディスプレイ側の USB-C 端子（Rd を示していない）と確定した
 7. **実機で分かったことを書き残す**: 確保の可否、向き、色、明るさ、転送時間、ゲージ型の見え方、写真を、`docs/article-material.md` §10 に書く。作業の判断に関わること（エラーと対処など）は、この文書の §4 にも追記する
 8. **公開と記事**（2026-10-09 済み）: 認証の扱いは「今の方式のまま公開し、README と記事に規約上の位置づけを明記する」とユーザーが決めた。README に規約上の位置づけを書き（`0e10883`）、§6 の確認（履歴にトークン・個人のアドレス・IP・API の生の応答が無いこと）をしてから public にし、記事を公開した（https://studioc.co.jp/tech/claude-code-usage-on-mac-usb-display/ 、タイトル「Claude Codeの利用枠を3.5インチ外部モニターに出力した」、studioc の `0abfec0`）。記事はユーザーの指示で、このリポジトリで起動したセッションが studioc の `.claude/skills/techblog-write/SKILL.md` と `docs/tech_blog_writing_guide.md` を読んで同じ手順で書いた。公開日はユーザーの指示で当日（金曜。火曜・木曜の枠の外）。X への告知はユーザーが手動で行う（定時の `x-announce.yml` は朝 7:00 に当日分だけを告知するので、この記事は自動では告知されない）。当初の手順は次のとおり: §6 の「認証の扱い」を決める → 必要なら実装を直す → README に、規約上の位置づけと、公式に説明されていない API を使っていることを明記する（2026-10-09 ユーザーが決定。`docs/article-material.md` §12 の 10）→ リポジトリを public にする → `~/projects/studioc` で起動したセッションが `/techblog-write` で記事を書く（素材は `docs/article-material.md`）
-9. **5 インチのディスプレイ**（購入予定。届くのが再開の条件）: 機種を判定する（§4-9。`system_profiler SPUSBHostDataType` の ID とシリアル、SD カードの差し込み口）→ rev C なら `turing.py` に rev C の通信を足す（仕様だけを使って自前で書く）→ 画面の配置を 800×480 に作り直す → 実機で確かめる → 別の記事にする（`docs/article-material.md` §12 の 4）
+9. **5.2 インチのディスプレイ**（2026-10-09 にユーザーが注文を決めた。AliExpress 1005010058380485、TURZX 5.2" 1280×720、Option 1-Black、5,538 円、配達予定 10 月 17〜21 日。届くのが再開の条件）。当初は 5 インチ（rev C、1005011742654881）を検討したが、macOS で動かす関門が少ない新しい世代の 5.2 インチに替えた（§4-9）。到着から 90 日以内なら返送料なしで返品できる（§4-9）
+   1. **届いたら最初に、Mac で通信できるかを確かめる**（返品の判断はここで決まる）: USB-A のハブにつなぎ、`system_profiler SPUSBHostDataType` で ID が `1cbe:0050` か（違う ID なら、中身の世代が違う個体。§4-9 の #727）→ pyusb でインターフェース 0 を確保できるか → 512 バイトの見出し（先頭 504 バイトを DES-CBC、鍵と IV は `slv3tuzx`）と PNG を 1 枚送り、表示されて応答が返るか（`lcd_comm_turing_usb.py` と Token Dashboard の `docs/turzx-architecture.md` を仕様として読み、コードは自前で書く。turing-smart-screen-python は GPL なので流用しない。Token Dashboard は MIT）
+   2. 通信できたら: 新しい世代の送信部を足し（明るさは命令 14）、画面の配置を 1280×720 に作り直す → 自動起動で動かす → 別の記事にする（`docs/article-material.md` §12 の 4）
+   3. 通信できなかったら: 到着から 90 日以内に返品する（ユーザーが判断する）
 
 ## 6. 公開するときに確かめること
 
