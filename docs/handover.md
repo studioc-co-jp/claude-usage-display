@@ -201,6 +201,7 @@ scripts/uninstall-launch-agent.sh                                 # 自動起動
 - macOS では、rev A はシリアル経由だと画面が崩れたので libusb でじかに書いている（§4-3）。rev C は起こすのにシリアルポートを開くので、macOS でどう送れるかは実機で確かめる
 - **購入候補の商品（2026-10-09 調査）**: AliExpress の商品 ID 1005011742654881（「5インチ IPS Type-C モニター 800x480 ブラック」。ユーザーが共有した短縮リンク `https://a.aliexpress.com/_c34x7IpT` の行き先）。ページは JavaScript で描くため、HTML から取れたのは商品名と商品画像 6 枚だけ（仕様の表とストア名は取れなかった）
   - 商品画像の内容: 画面に TURZX の表示、側面に「Type-C port」と「TF card slot」、背面に「TURING SMART SCREEN」のラベル、800×480、122×78×10 mm、アルミの筐体、SD カードの動画・写真を PC なしで再生、付属品に「5Pin to USB-C」「9Pin Cable」「USB cable」（マザーボードの USB 端子につなぐもの）と卓上・ファンのブラケット
+  - ユーザーがアプリで開いた商品ページの画面（2026-10-09 11:02〜11:03 のスクリーンショット）: 商品名は「TURZX 5インチ IPS Type-C サブディスプレイ コンピューター LCD ディスプレイ USB ダイナミック ミニモニター 800x480 AIDA64非対応 Windows 10/11用」。説明の「Interface introduction」は「Type-C port ×1、SD card slot ×1、PH port ×1（PH port: hidden interface on the back）」、TF カードは 256 GB まで。「Dynamic background: Support setting dynamic video as theme background」。明細はバッテリー付属 no・主な用途 その他の分野・懸念される化学物質 なし
   - **wiki「Hardware revisions」の Turing Smart Screen 5" に当たる**（SD カードの差し込み口、USB-C が 1〜2 個、マザーボード用の MX-1.25 のコネクター、黒と白、公式ソフトは Windows 用の `UsbMonitorL.exe`）。UsbPCMonitor 5"（rev A）は USB-C が 2 個で SD カードの差し込み口が無いので違う。したがって **rev C**
 - **rev C の 5 インチの通信（issue #1030・#1075 とそのコメント。どちらも Linux）**
   - USB には 2 つの姿で現れる。休止中は CH552T のブリッジ（`1a86:ca21`・シリアル `CT21INCH`、または `1a86:ca50`・`CT50INCH`、製品名 `UsbMonitor`）。起こすと別の機種（`1d6b:0106`、ときに `0525:a4a7`、製品名 `Android`、シリアル `20080411`）として現れ、通信はこちらのバルク OUT `0x01`・IN `0x81` で行う（#1030 の Windows の通信の記録）
