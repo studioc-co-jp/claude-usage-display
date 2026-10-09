@@ -22,9 +22,11 @@ Claude Code の利用枠（5 時間・週次・Fable 週次）を、USB でつ�
 ```
 .venv/bin/python -m unittest discover -s tests                     # 単体テスト
 .venv/bin/python -m claude_usage_display preview --demo -o demo.png # ディスプレイ無しで画面を確かめる
+.venv/bin/python -m claude_usage_display preview --demo --size 1280x720 -o demo.png  # 5.2 インチの大きさで確かめる
 ```
 
 - 依存は `requirements.txt`（版を固定）。libusb は Homebrew で入れる
+- ゲージ型は、3.5 インチ（480×320）の寸法を定数で持ち、`gauge.Layout` が高さの比で拡大する（5.2 インチの 1280×720 は 2.25 倍）。寸法を変えるときは 480×320 の値を変え、1280×720 でも `preview --size 1280x720` で確かめる。480×320 の画像は、拡大の仕組みを入れる前と 1 ピクセルも変わっていない（2026-10-09 に確かめた）
 - 画面は 2 種類ある。既定のゲージ型は `claude_usage_display/gauge.py`、横棒の画面（`--theme classic`）は `claude_usage_display/render.py`。ユーザーがゲージ型を選んだうえで、戻せるように横棒の画面を残している（2026-10-05）
 - 画面の色は、送る前に RGB565 へ落ちる。中間の灰色は緑に寄るので、新しい灰色を足すときは RGB565 でそのまま表せる値にする（`tests/test_gauge.py` の `test_card_color_survives_rgb565`）
 - 13 ピクセル以下になりうる文字は `render.SMALL_WEIGHT`（W4）で書く。ヒラギノ角ゴシック W3 は 12・13 ピクセルで「4」の横棒が消える（`tests/test_render.py` の `test_small_weight_keeps_crossbar_of_four`、`docs/handover.md` §4-8）

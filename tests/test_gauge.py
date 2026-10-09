@@ -92,5 +92,59 @@ class GaugeRenderTest(unittest.TestCase):
         self.assertFalse(inked & set(gap), "理由と時刻が重なっている")
 
 
+class LargeGaugeTest(unittest.TestCase):
+    """5.2 インチ（1280×720）。寸法と文字を 2.25 倍にし、増えた横幅をカードに回す。"""
+
+    SIZE = (1280, 720)
+    LAYOUT = gauge.Layout(*SIZE)
+
+    def test_size_and_scale(self):
+        self.assertEqual(gauge.render(snapshot(26, 74, 93), NOW, size=self.SIZE).size, self.SIZE)
+        self.assertEqual(self.LAYOUT.k, 2.25)
+        self.assertEqual(self.LAYOUT.pt(gauge.TITLE1), 63)
+        left, top, right, bottom = gauge.card_box(2, self.LAYOUT)
+        self.assertAlmostEqual(right, 1280 - 12 * 2.25)
+        self.assertGreater(self.LAYOUT.card_width, gauge.CARD_WIDTH * 2.25)
+
+    def test_ring_color_follows_severity(self):
+        image = gauge.render(snapshot(26, 74, 93), NOW, size=self.SIZE)
+        _label, ring_y, *_rest, content_height = gauge.content_rows(self.LAYOUT)
+        radius, width = self.LAYOUT.px(gauge.RING_RADIUS), self.LAYOUT.px(gauge.RING_WIDTH)
+        for index, expected in enumerate((gauge.BLUE, gauge.ORANGE, gauge.RED)):
+            left, top, right, bottom = gauge.card_box(index, self.LAYOUT)
+            x, y = (left + right) / 2 + radius - width / 2, top + (bottom - top - content_height) / 2 + ring_y
+            pixel = image.getpixel((math.floor(x), math.floor(y)))
+            with self.subTest(index=index):
+                self.assertTrue(all(abs(a - b) <= 12 for a, b in zip(pixel, expected)), pixel)
+
+    def test_card_content_is_vertically_centered(self):
+        image = gauge.render(snapshot(26, 74, 93), NOW, size=self.SIZE)
+        inset = math.ceil(self.LAYOUT.px(gauge.CARD_RADIUS))
+        for index in range(3):
+            left, top, right, bottom = (round(v) for v in gauge.card_box(index, self.LAYOUT))
+            rows = ink_rows(image, left + inset, right - inset, top + 3, bottom - 3, gauge.CARD)
+            above, below = rows[0] - top, bottom - 1 - rows[-1]
+            with self.subTest(index=index):
+                self.assertLessEqual(abs(above - below), 6, (above, below))
+
+    def test_status_stays_inside_and_apart_from_time(self):
+        image = gauge.render(snapshot(8, 4, 0), NOW, "ログイン切れ（Claude Code を起動すると戻ります）", size=self.SIZE)
+        width, px = self.SIZE[0], self.LAYOUT.px
+        inked = {x for x in range(width) for y in range(0, round(px(gauge.CARD_TOP)) - 4)
+                 if image.getpixel((x, y)) != gauge.BACKGROUND}
+        self.assertFalse({x for x in inked if x > width - px(gauge.HEADER_INSET) + 2}, "右の余白にはみ出している")
+        small = gauge.font(self.LAYOUT.pt(gauge.FOOTNOTE), gauge.SMALL_WEIGHT)
+        time_left = width - px(gauge.HEADER_INSET) - small.getlength("15:24 時点")
+        gap = range(round(time_left - px(gauge.STATUS_GAP)) + 3, round(time_left) - 3)
+        self.assertFalse(inked & set(gap), "理由と時刻が重なっている")
+
+    def test_renders_missing_values_and_errors(self):
+        empty = Snapshot((Meter("5時間", None, None), Meter("週次", None, None), Meter("Opus週次", None, None)), NOW)
+        for args in ((empty, NOW, "通信できません"), (None, NOW, "通信できません", ("5時間", "週次", "Opus週次")),
+                     (snapshot(140, -5, None), NOW), (snapshot(100, 0.4, 50), NOW)):
+            with self.subTest(args=args[2:] if len(args) > 2 else args[0].meters[0].percent):
+                self.assertEqual(gauge.render(*args, size=self.SIZE).size, self.SIZE)
+
+
 if __name__ == "__main__":
     unittest.main()

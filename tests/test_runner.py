@@ -154,6 +154,17 @@ class TurzxRunnerTest(unittest.TestCase):
         self.assertEqual(transport.commands()[0], CMD_SYNC)
         sent = Image.open(io.BytesIO(transport.writes[-1][512:])).convert("RGB")
         self.assertEqual(sent.size, (720, 1280))
+        # ゲージ型は 1280×720 で直接描く。横向きの (60, 400) は左のカードの面で、
+        # 時計回りに 90 度回した縦長では (719 - 400, 60) に来る
+        self.assertEqual(sent.getpixel((319, 60)), cli.gauge.CARD)
+
+    def test_classic_theme_is_letterboxed_on_the_larger_screen(self):
+        runner = cli.Runner(make_args(theme="classic"))
+        transport = StopAfterImage(runner)
+        with mock.patch.object(cli.TurzxUsbTransport, "open", return_value=(transport, 0x0050)), \
+                mock.patch.object(cli, "fetch_snapshot", return_value=snapshot()):
+            runner.loop()
+        sent = Image.open(io.BytesIO(transport.writes[-1][512:])).convert("RGB")
         # 480×320 を 2.25 倍の 1080×720 にして中央に置くので、横向きの左右 100 ピクセルは黒い。
         # 縦長に回した後は、上下の 100 ピクセルに当たる
         self.assertEqual(sent.getpixel((360, 50)), (0, 0, 0))
@@ -196,6 +207,12 @@ class ArgumentsTest(unittest.TestCase):
             with self.subTest(value=value), mock.patch.object(cli, "cmd_run", return_value=0) as run:
                 self.assertEqual(cli.main(["run", "--brightness", value]), 0)
                 self.assertEqual(run.call_args.args[0].brightness, int(value))
+
+    def test_preview_size(self):
+        for argv, expected in ((["preview"], "480x320"), (["preview", "--size", "1280x720"], "1280x720")):
+            with self.subTest(argv=argv), mock.patch.object(cli, "cmd_preview", return_value=0) as preview:
+                cli.main(argv)
+                self.assertEqual(preview.call_args.args[0].size, expected)
 
     def test_theme_defaults_to_gauge_and_classic_stays_available(self):
         for argv, expected in ((["run"], "gauge"), (["run", "--theme", "classic"], "classic"),

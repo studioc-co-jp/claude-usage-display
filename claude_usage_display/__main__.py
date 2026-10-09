@@ -33,9 +33,8 @@ log = logging.getLogger("claude_usage_display")
 DEVICE_RETRY_SECONDS = 10
 DEVICE_IDS = "・".join([f"{TURZX_VID:04x}:{pid:04x}" for pid in TURZX_MODELS] + [f"{VID:04x}:{PID:04x}"])
 
-# 画面のデザイン。classic は最初に作った横棒の画面
-THEMES = {"gauge": gauge.render, "classic": render.render}
 DEFAULT_THEME = "gauge"
+SIZES = {"480x320": (480, 320), "1280x720": (1280, 720)}  # 3.5 インチと 5.2 インチ
 
 
 def open_display(flipped: bool) -> TuringRevA | TurzxUsb:
@@ -50,7 +49,7 @@ def open_display(flipped: bool) -> TuringRevA | TurzxUsb:
 def fit_to(image: Image.Image, size: tuple[int, int]) -> Image.Image:
     """大きさの違う画面へ、縦横比を保って拡大・縮小し、黒地の中央に置く。
 
-    画面のデザインは 480×320 だけなので、5.2 インチ（1280×720）用の配置を作るまでのつなぎに使う。
+    横棒の画面（480×320 だけ）を 5.2 インチ（1280×720）に出すときに使う。
     """
     if image.size == size:
         return image
@@ -59,6 +58,15 @@ def fit_to(image: Image.Image, size: tuple[int, int]) -> Image.Image:
     canvas = Image.new("RGB", size)
     canvas.paste(resized, ((size[0] - resized.width) // 2, (size[1] - resized.height) // 2))
     return canvas
+
+
+def _classic(snapshot, now, status=None, labels=("5時間", "週次", "Fable週次"), size=SIZES["480x320"]):
+    """横棒の画面は 480×320 だけなので、ほかの大きさの画面には拡大して中央に置く。"""
+    return fit_to(render.render(snapshot, now, status, labels), size)
+
+
+# 画面のデザイン。classic は最初に作った横棒の画面。どちらも size=(幅, 高さ) を受け取る
+THEMES = {"gauge": gauge.render, "classic": _classic}
 
 
 def _demo_snapshot(now: datetime, model: str) -> Snapshot:
@@ -72,13 +80,14 @@ def _demo_snapshot(now: datetime, model: str) -> Snapshot:
 def cmd_preview(args) -> int:
     now = datetime.now(timezone.utc)
     draw = THEMES[args.theme]
+    size = SIZES[args.size]
     if args.demo:
-        image = draw(_demo_snapshot(now, args.model), now)
+        image = draw(_demo_snapshot(now, args.model), now, size=size)
     else:
         try:
-            image = draw(fetch_snapshot(args.model), now)
+            image = draw(fetch_snapshot(args.model), now, size=size)
         except UsageError as e:
-            image = draw(None, now, e.message, meter_labels(args.model))
+            image = draw(None, now, e.message, meter_labels(args.model), size=size)
             print(f"取得に失敗しました: {e.message}", file=sys.stderr)
     image.save(args.output)
     print(args.output)
@@ -238,8 +247,8 @@ class Runner:
                 continue
             self._fetch_if_due()
             image = THEMES[self.args.theme](self.snapshot, datetime.now(timezone.utc), self.status,
-                                            meter_labels(self.args.model))
-            image = fit_to(image, (self.display.width, self.display.height))
+                                            meter_labels(self.args.model),
+                                            size=(self.display.width, self.display.height))
             frame = image.tobytes()
             if frame != self.last_frame:
                 try:
@@ -277,6 +286,8 @@ def main(argv: list[str] | None = None) -> int:
     preview = sub.add_parser("preview", help="画像だけ作る（ディスプレイ不要）")
     preview.add_argument("-o", "--output", default="preview.png")
     preview.add_argument("--demo", action="store_true", help="API を呼ばず見本の値で描く")
+    preview.add_argument("--size", choices=SIZES, default="480x320",
+                         help="画面の大きさ（既定: 480x320。1280x720 は 5.2 インチ）")
     preview.set_defaults(func=cmd_preview)
 
     theme_help = f"画面のデザイン（既定: {DEFAULT_THEME}。classic は横棒の画面）"

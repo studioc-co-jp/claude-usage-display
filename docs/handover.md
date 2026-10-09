@@ -31,7 +31,7 @@ Claude Code の利用枠 3 つ（**5 時間・週次・Fable 週次**）を、Ma
 - **自動起動は登録済み**（2026-10-09 08:22 に既定のオプションで登録し直し、ログに「ディスプレイに接続しました」が出た。§5-6 の 7）。ディスプレイをつなぐ前に一度解除していた（§5-6 の 1）。2026-10-05 に登録したとき（既定のオプション。`~/Library/LaunchAgents/jp.co.studioc.claude-usage-display.plist`、ログは `~/Library/Logs/claude-usage-display.log`）に確かめたことは次のとおり
   - 登録・オプションを変えての登録し直し・誤ったオプションの拒否・解除・強制終了後の起動し直し（約 3 秒）を実際に動かして確かめた
   - launchd から起動しても Keychain の読み取りと利用枠の取得が通ることを、`preview` を 1 回だけ動かす使い捨てのジョブで確かめた（§4-6）
-- テストは 67 件すべて成功（2026-10-09 時点）（`.venv/bin/python -m unittest discover -s tests`）。5.2 インチの送信部（`turzx_usb.py`）を足した後、自動起動を起動し直し、3.5 インチで 12:00・12:01 の描き直しがエラーなく送られたことをログで確かめた
+- テストは 74 件すべて成功（2026-10-09 時点）（`.venv/bin/python -m unittest discover -s tests`）。5.2 インチの送信部（`turzx_usb.py`）を足した後、自動起動を起動し直し、3.5 インチで 12:00・12:01 の描き直しがエラーなく送られたことをログで確かめた
 - この回で見つけて直した不具合（いずれもテストを追加済み）
   - `--brightness` の範囲外（例: 150）が引数解析を通り、接続した時点で初期化の失敗を 10 秒ごとに繰り返す → 引数解析で止める
   - 取得失敗の文言のうち最長の「ログイン切れ（…）」が、時刻と合わせて右端で切れる → 理由と時刻を左右に分け、収まらないときは文字を縮める
@@ -49,12 +49,12 @@ Claude Code の利用枠 3 つ（**5 時間・週次・Fable 週次**）を、Ma
 | パス | 役割 |
 |---|---|
 | `claude_usage_display/usage.py` | Keychain からトークンを読み、利用枠 API を呼び、`limits` 配列から 3 本を取り出す |
-| `claude_usage_display/gauge.py` | 既定の画面（ゲージ型）を描く |
+| `claude_usage_display/gauge.py` | 既定の画面（ゲージ型）を描く。480×320 の寸法を `Layout` が高さの比で拡大し、1280×720（5.2 インチ、2.25 倍）でも描く |
 | `claude_usage_display/render.py` | 横棒の画面（`--theme classic`）と、画面に共通の部品（フォント、リセット時刻の書式）。確認画面（`render_test_pattern`）もここにある |
 | `claude_usage_display/turing.py` | rev A のコマンド組み立て、RGB565（リトルエンディアン）への変換、libusb での送信 |
 | `claude_usage_display/turzx_usb.py` | 5.2 インチ（TURZX の新しい世代、`1cbe:0050`）への送信。暗号化した 512 バイトの見出し（DES-CBC、鍵 `slv3tuzx`）と PNG（1 MiB を超えると JPEG）を 1 回で書き、応答を確かめる。横向きの画像を縦長に回して送る。実機では未確認 |
 | `claude_usage_display/__main__.py` | `preview` / `probe` / `test-pattern` / `run` の 4 コマンド。`run` は常駐ループ |
-| `tests/` | 単体テスト 67 件。`fixtures/usage_response.json` は実際の応答から必要な項目だけを残したもの |
+| `tests/` | 単体テスト 74 件。`fixtures/usage_response.json` は実際の応答から必要な項目だけを残したもの |
 | `launchd/jp.co.studioc.claude-usage-display.plist` | 自動起動のひな形（`@…@` をパスに置き換えて使う） |
 | `scripts/install-launch-agent.sh` / `uninstall-launch-agent.sh` | 自動起動の登録（登録し直し）と解除 |
 | `README.md` / `CLAUDE.md` | 使い方と、このリポジトリで作業するときの規則 |
@@ -306,7 +306,7 @@ scripts/uninstall-launch-agent.sh                                 # 自動起動
       2. USB-A のハブにつなぎ、`.venv/bin/python -m claude_usage_display probe`。`1cbe:0050 TURZX 5.2 インチ` と出て、「インターフェースを確保できました」で終われば次へ。別の ID なら、中身の世代が違う個体（§4-9 の #727）。一覧の出力をそのまま記録する
       3. `.venv/bin/python -m claude_usage_display test-pattern`。命令 10（同期）・14（明るさ）・102（PNG）の応答が表示される。先頭が「命令番号 c8 時刻 4 バイト」なら想定どおり。違う形なら、表示された応答を記録し、`turzx_usb.check_response` を実機に合わせて直す（明るさの命令に応答が無いことも考えられる。ライブラリは明るさの応答を確かめていない）
       4. 画面に確認画面が出るか、左上が赤で「左上」か（逆なら `--flip`）、1280×720 と出るかを見る
-   2. 通信できたら: `run` で動かす（今は 480×320 の画面を 2.25 倍にして黒地の中央に出す。`__main__.fit_to`）→ 画面の配置を 1280×720 に作り直す → 自動起動で動かす → 別の記事にする（`docs/article-material.md` §12 の 4）
+   2. 通信できたら: `run` で動かす（ゲージ型は 1280×720 で描く。2026-10-09 に先に作った。見本は `docs/images/gauge-1280x720.png`）→ 実機で文字の大きさ・色・明るさを見てもらい、必要なら調整する → 自動起動で動かす → 別の記事にする（`docs/article-material.md` §12 の 4）
    3. 通信できなかったら: 到着から 90 日以内に返品する（ユーザーが判断する）
 
 ## 6. 公開するときに確かめること

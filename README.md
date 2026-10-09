@@ -70,13 +70,16 @@ nuits_jp（NAKAMURA Atsushi）さんの X の記事「[AI専用ダッシュボ�
 - 文字の大きさは、[Human Interface Guidelines の Typography](https://developer.apple.com/design/human-interface-guidelines/typography) にある iOS の既定の文字スタイル（Title 1 28・Subhead 15・Footnote 13・Caption 1 12）の pt を、そのままピクセルで使っています。このディスプレイは [iPhone 3GS](https://support.apple.com/kb/SP565) と同じ 3.5 インチ・480×320 なので、iPhone で見る文字とほぼ同じ大きさになります
 - 数字は SF Pro Rounded、日本語はヒラギノ角ゴシックです。どちらも macOS に入っているフォントを使います
 - 図形は 4 倍の大きさで描いてから縮め、縁を滑らかにしています。文字は縮めるとかすれるため、縮めた後に書いています
+- 5.2 インチ（1280×720）では、寸法と文字の大きさをすべて高さの比の 2.25 倍にし、増えた横幅はカードの幅に回します。5.2 インチは約 282 ppi なので、文字は 3.5 インチより約 1.3 倍大きく見えます。表示部の高さも約 1.27 倍になるので、縦の配分は 3.5 インチと同じです
+
+![5.2 インチのゲージ型の画面（見本の値）](docs/images/gauge-1280x720.png)
 
 ## 対応機種
 
 | 項目 | 内容 |
 |---|---|
 | ディスプレイ | Turing Smart Screen 3.5 インチ（rev A）。USB の ID が `1a86:5722`、シリアル番号が `USB35INCHIPSV2` のもの |
-| ディスプレイ（送信部のみ） | TURZX 5.2 インチ（1280×720、USB の ID が `1cbe:0050`）。**実機ではまだ試していません**（2026-10-09 時点）。画面のデザインは 480×320 だけなので、縦横比を保って拡大し、黒地の中央に出します |
+| ディスプレイ（送信部のみ） | TURZX 5.2 インチ（1280×720、USB の ID が `1cbe:0050`）。**実機ではまだ試していません**（2026-10-09 時点）。ゲージ型は 1280×720 で描きます。横棒の画面（`--theme classic`）は 480×320 だけなので、縦横比を保って拡大し、黒地の中央に出します |
 | Mac | macOS。Homebrew が使えること |
 | Claude Code | Claude のサブスクリプション（Pro・Max）でログインしていること。動作を確かめたのは Max（5x）です |
 
@@ -115,6 +118,7 @@ python3 -m venv .venv
 ```
 .venv/bin/python -m claude_usage_display preview -o preview.png    # 今の値で画像だけ作る（ディスプレイ不要）
 .venv/bin/python -m claude_usage_display preview --demo -o demo.png # API を呼ばず見本の値で描く
+.venv/bin/python -m claude_usage_display preview --demo --size 1280x720 -o demo.png  # 5.2 インチの大きさで描く
 .venv/bin/python -m claude_usage_display probe                     # ディスプレイの USB 情報と、インターフェースを確保できるか
 .venv/bin/python -m claude_usage_display test-pattern              # 向きと色の確認画面（左上が赤で「左上」）
 .venv/bin/python -m claude_usage_display run                       # 常駐して表示し続ける（Ctrl+C で終了）
