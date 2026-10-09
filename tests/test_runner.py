@@ -90,6 +90,35 @@ class RunnerTest(unittest.TestCase):
         self.assertEqual(runner.status, "取得の間隔を空けています")
         self.assertEqual(runner.next_fetch, 1900.0)
 
+    def test_rate_limit_is_logged_every_time_with_wait_and_recovery_duration(self):
+        runner = cli.Runner(make_args())
+        limited = UsageError("取得の間隔を空けています", 212, rate_limited=True, detail="HTTP 429。Retry-After: 212 → 212 秒")
+        jst = cli.render.JST
+        clock = iter([datetime(2026, 10, 9, 22, 56, 29, tzinfo=jst), datetime(2026, 10, 9, 22, 56, 29, tzinfo=jst),
+                      datetime(2026, 10, 9, 23, 0, 1, tzinfo=jst), datetime(2026, 10, 9, 23, 3, 35, tzinfo=jst)])
+        fake_datetime = mock.Mock(wraps=datetime, now=lambda tz=None: next(clock))
+        with mock.patch.object(cli, "fetch_snapshot", side_effect=[limited, limited, snapshot()]), \
+                mock.patch.object(cli, "datetime", fake_datetime), \
+                mock.patch.object(cli.time, "monotonic", side_effect=[0.0, 1000.0, 2000.0]), \
+                self.assertLogs(cli.log, "INFO") as logs:
+            for _ in range(3):
+                runner._fetch_if_due()
+        self.assertEqual([r.getMessage() for r in logs.records], [
+            "取得の間隔を空けるよう求められました（HTTP 429。Retry-After: 212 → 212 秒。次の取得は 23:00:01）",
+            "取得の間隔を空けるよう求められました（HTTP 429。Retry-After: 212 → 212 秒。次の取得は 23:03:33）",
+            "取得が戻りました（22:56:29 から 7 分 6 秒）",
+        ])
+        self.assertIsNone(runner.status)
+
+    def test_other_failures_are_logged_once_while_they_continue(self):
+        runner = cli.Runner(make_args())
+        with mock.patch.object(cli, "fetch_snapshot", side_effect=UsageError("通信できません")), \
+                mock.patch.object(cli.time, "monotonic", side_effect=[0.0, 1000.0]), \
+                self.assertLogs(cli.log, "WARNING") as logs:
+            runner._fetch_if_due()
+            runner._fetch_if_due()
+        self.assertEqual(len(logs.records), 1)
+
     def test_waits_without_fetching_while_device_is_absent(self):
         runner = cli.Runner(make_args())
 

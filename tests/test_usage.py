@@ -1,8 +1,10 @@
 import json
 import unittest
+from unittest import mock
 from datetime import datetime, timezone
 from pathlib import Path
 
+from claude_usage_display import usage
 from claude_usage_display.usage import parse_retry_after, parse_usage
 
 FIXTURE = Path(__file__).parent / "fixtures" / "usage_response.json"
@@ -72,6 +74,35 @@ class RetryAfterTest(unittest.TestCase):
     def test_garbage(self):
         self.assertIsNone(parse_retry_after("soon"))
         self.assertIsNone(parse_retry_after(None))
+
+
+
+class RateLimitTest(unittest.TestCase):
+    def raise_429(self, headers):
+        import email.message
+        import urllib.error
+
+        message = email.message.Message()
+        for name, value in headers.items():
+            message[name] = value
+        error = urllib.error.HTTPError(usage.USAGE_URL, 429, "Too Many Requests", message, None)
+        with mock.patch.object(usage.urllib.request, "urlopen", side_effect=error), \
+                self.assertRaises(usage.UsageError) as raised:
+            usage.fetch_raw("token-value")
+        return raised.exception
+
+    def test_429_keeps_retry_after_and_rate_limit_headers_for_the_log(self):
+        error = self.raise_429({"Retry-After": "212", "anthropic-ratelimit-unified-status": "rejected",
+                                "request-id": "req_123", "set-cookie": "secret"})
+        self.assertTrue(error.rate_limited)
+        self.assertEqual((error.message, error.retry_after), ("取得の間隔を空けています", 212))
+        self.assertEqual(error.detail, "HTTP 429。Retry-After: 212 → 212 秒。anthropic-ratelimit-unified-status: rejected")
+        self.assertNotIn("token-value", error.detail)
+
+    def test_429_without_retry_after(self):
+        error = self.raise_429({})
+        self.assertIsNone(error.retry_after)
+        self.assertEqual(error.detail, "HTTP 429。Retry-After: なし")
 
 
 if __name__ == "__main__":

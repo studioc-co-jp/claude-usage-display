@@ -40,12 +40,19 @@ class Snapshot:
 
 
 class UsageError(Exception):
-    """取得に失敗した。``message`` は画面の下端に出す短い日本語。"""
+    """取得に失敗した。``message`` は画面に出す短い日本語。
 
-    def __init__(self, message: str, retry_after: int | None = None):
+    ``rate_limited`` は HTTP 429（間隔を空けるよう求められた）。``detail`` はログにだけ残す補足で、
+    429 の Retry-After などを入れる。アクセストークンや利用者を識別する値は入れない。
+    """
+
+    def __init__(self, message: str, retry_after: int | None = None, *, rate_limited: bool = False,
+                 detail: str | None = None):
         super().__init__(message)
         self.message = message
         self.retry_after = retry_after
+        self.rate_limited = rate_limited
+        self.detail = detail
 
 
 def read_access_token() -> str:
@@ -87,6 +94,13 @@ def parse_retry_after(value: str | None, now: datetime | None = None) -> int | N
     return max(0, min(seconds, MAX_RETRY_AFTER))
 
 
+def describe_rate_limit(raw: str | None, seconds: int | None, headers) -> str:
+    """429 のときにログへ残す説明。Retry-After と、名前に ratelimit を含む見出しだけを並べる。"""
+    parts = [f"HTTP 429。Retry-After: {raw or 'なし'}" + ("" if seconds is None else f" → {seconds} 秒")]
+    parts += [f"{name}: {value}" for name, value in (headers.items() if headers else ()) if "ratelimit" in name.lower()]
+    return "。".join(parts)
+
+
 def fetch_raw(token: str, timeout: float = 15) -> dict:
     req = urllib.request.Request(
         USAGE_URL,
@@ -104,9 +118,10 @@ def fetch_raw(token: str, timeout: float = 15) -> dict:
         if e.code in (401, 403):
             raise UsageError("ログイン切れ（Claude Code を起動すると戻ります）") from e
         if e.code == 429:
-            raise UsageError(
-                "取得の間隔を空けています", parse_retry_after(e.headers.get("Retry-After"))
-            ) from e
+            raw = e.headers.get("Retry-After") if e.headers else None
+            seconds = parse_retry_after(raw)
+            raise UsageError("取得の間隔を空けています", seconds, rate_limited=True,
+                             detail=describe_rate_limit(raw, seconds, e.headers)) from e
         raise UsageError(f"取得に失敗しました（HTTP {e.code}）") from e
     except (urllib.error.URLError, TimeoutError, OSError) as e:
         raise UsageError("通信できません") from e

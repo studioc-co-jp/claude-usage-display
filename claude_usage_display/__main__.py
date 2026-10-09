@@ -167,6 +167,15 @@ def cmd_test_pattern(args) -> int:
     return 0
 
 
+def _duration(elapsed: timedelta) -> str:
+    seconds = max(0, round(elapsed.total_seconds()))
+    hours, rest = divmod(seconds, 3600)
+    minutes, seconds = divmod(rest, 60)
+    if hours:
+        return f"{hours} 時間 {minutes} 分"
+    return f"{minutes} 分 {seconds} 秒" if minutes else f"{seconds} 秒"
+
+
 class Runner:
     def __init__(self, args):
         self.args = args
@@ -175,6 +184,7 @@ class Runner:
         self.snapshot: Snapshot | None = None
         self.status: str | None = None
         self.next_fetch = 0.0
+        self.failed_since: datetime | None = None  # 取得に失敗し始めた時刻（戻ったときに止まっていた長さを記録する）
         self.last_frame: bytes | None = None
         self.waiting_logged = False
         self.open_error: str | None = None
@@ -224,15 +234,23 @@ class Runner:
             return
         try:
             self.snapshot = fetch_snapshot(self.args.model)
-            if self.status:
-                log.info("取得が戻りました")
+            if self.status and self.failed_since:
+                log.info("取得が戻りました（%s から %s）", f"{self.failed_since:%H:%M:%S}",
+                         _duration(datetime.now(render.JST) - self.failed_since))
             self.status = None
+            self.failed_since = None
             self.next_fetch = now + self.args.interval
         except UsageError as e:
-            if e.message != self.status:
+            wait = max(self.args.interval, e.retry_after or 0)
+            if self.failed_since is None:
+                self.failed_since = datetime.now(render.JST)
+            if e.rate_limited:  # 原因を絞り込めるよう、429 は続いても毎回、待ち時間とともに記録する
+                retry_at = datetime.now(render.JST) + timedelta(seconds=wait)
+                log.warning("取得の間隔を空けるよう求められました（%s。次の取得は %s）", e.detail, f"{retry_at:%H:%M:%S}")
+            elif e.message != self.status:
                 log.warning("取得に失敗しました: %s", e.message)
             self.status = e.message
-            self.next_fetch = now + max(self.args.interval, e.retry_after or 0)
+            self.next_fetch = now + wait
 
     def _seconds_to_wait(self) -> float:
         now = datetime.now()

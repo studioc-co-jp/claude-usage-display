@@ -31,7 +31,7 @@ Claude Code の利用枠 3 つ（**5 時間・週次・Fable 週次**）を、Ma
 - **自動起動は登録済み**（2026-10-09 08:22 に既定のオプションで登録し直し、ログに「ディスプレイに接続しました」が出た。§5-6 の 7）。ディスプレイをつなぐ前に一度解除していた（§5-6 の 1）。2026-10-05 に登録したとき（既定のオプション。`~/Library/LaunchAgents/jp.co.studioc.claude-usage-display.plist`、ログは `~/Library/Logs/claude-usage-display.log`）に確かめたことは次のとおり
   - 登録・オプションを変えての登録し直し・誤ったオプションの拒否・解除・強制終了後の起動し直し（約 3 秒）を実際に動かして確かめた
   - launchd から起動しても Keychain の読み取りと利用枠の取得が通ることを、`preview` を 1 回だけ動かす使い捨てのジョブで確かめた（§4-6）
-- テストは 74 件すべて成功（2026-10-09 時点）（`.venv/bin/python -m unittest discover -s tests`）。5.2 インチの送信部（`turzx_usb.py`）を足した後、自動起動を起動し直し、3.5 インチで 12:00・12:01 の描き直しがエラーなく送られたことをログで確かめた
+- テストは 78 件すべて成功（2026-10-09 時点）（`.venv/bin/python -m unittest discover -s tests`）。5.2 インチの送信部（`turzx_usb.py`）を足した後、自動起動を起動し直し、3.5 インチで 12:00・12:01 の描き直しがエラーなく送られたことをログで確かめた
 - この回で見つけて直した不具合（いずれもテストを追加済み）
   - `--brightness` の範囲外（例: 150）が引数解析を通り、接続した時点で初期化の失敗を 10 秒ごとに繰り返す → 引数解析で止める
   - 取得失敗の文言のうち最長の「ログイン切れ（…）」が、時刻と合わせて右端で切れる → 理由と時刻を左右に分け、収まらないときは文字を縮める
@@ -43,6 +43,7 @@ Claude Code の利用枠 3 つ（**5 時間・週次・Fable 週次**）を、Ma
   - **push は SSH の remote で行う**（`git@github.com:studioc-co-jp/claude-usage-display.git`）
 - `.venv/` は `python3 -m venv .venv && .venv/bin/pip install -r requirements.txt` で作れる（2026-10-05 に新しい venv で作り、テストが通ることを確認）
 - ディスプレイ未接続の状態で、`run` が「接続を待っています」と記録して待機し、SIGTERM で正常に終わることを確認済み
+- **利用枠の API の 429（取得の間隔を空けています）**: 2026-10-09 22:15:03（22:18:28 に戻る）と 22:56:29（22:59:57 に戻る）に出た。このツールの間隔は 120 秒のままで、同じ API を同じトークンで呼ぶ Orca（`/Applications/Orca.app`、10 月 7 日から起動中。`app.asar` の中で `https://api.anthropic.com/api/oauth/usage` を呼ぶことを確認）が動いていた。VS Code は起動しておらず、Claude Usage Meter は呼んでいない。どちらが上限に触れたかは、このときのログに Retry-After を残していなかったため分からない。ユーザーの指示で、429 は毎回「Retry-After の値・秒数・名前に ratelimit を含む応答の見出し・次の取得の時刻」を、戻ったときは止まっていた長さを、ログに残すようにした（2026-10-09 23 時台）。Orca が呼ぶ頻度は、`app.asar` の API の呼び出しの前後からは見つからなかった
 
 ### ファイル
 
@@ -54,7 +55,7 @@ Claude Code の利用枠 3 つ（**5 時間・週次・Fable 週次**）を、Ma
 | `claude_usage_display/turing.py` | rev A のコマンド組み立て、RGB565（リトルエンディアン）への変換、libusb での送信 |
 | `claude_usage_display/turzx_usb.py` | 5.2 インチ（TURZX の新しい世代、`1cbe:0050`）への送信。暗号化した 512 バイトの見出し（DES-CBC、鍵 `slv3tuzx`）と PNG（1 MiB を超えると JPEG）を 1 回で書き、応答を確かめる。横向きの画像を縦長に回して送る。実機では未確認 |
 | `claude_usage_display/__main__.py` | `preview` / `probe` / `test-pattern` / `run` の 4 コマンド。`run` は常駐ループ |
-| `tests/` | 単体テスト 74 件。`fixtures/usage_response.json` は実際の応答から必要な項目だけを残したもの |
+| `tests/` | 単体テスト 78 件。`fixtures/usage_response.json` は実際の応答から必要な項目だけを残したもの |
 | `launchd/jp.co.studioc.claude-usage-display.plist` | 自動起動のひな形（`@…@` をパスに置き換えて使う） |
 | `scripts/install-launch-agent.sh` / `uninstall-launch-agent.sh` | 自動起動の登録（登録し直し）と解除 |
 | `README.md` / `CLAUDE.md` | 使い方と、このリポジトリで作業するときの規則 |
