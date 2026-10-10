@@ -233,6 +233,19 @@ scripts/uninstall-launch-agent.sh                                 # 自動起動
 - **普通の小型モニター**: AliExpress には HDMI の 5 インチ（800×480、Raspberry Pi 向け）や 5.5 インチのカメラ用モニターがある。macOS がモニターとして認識するが、デスクトップの一部になり（ウィンドウが移る）、映像出力を 1 つ使い、プログラムも「全画面のウィンドウに描く」形に作り替えることになる
 - 電源: USB-C⇔USB-C で電源が入るか（ディスプレイ側が Rd を示すか）は、商品画像と issue からは分からなかった。3.5 インチと同じく、USB ハブの USB-A 端子と USB-A⇔USB-C ケーブルなら給電できる（§4-7）
 
+### 4-10. Claude 以外の利用枠（2026-10-11 調査）
+
+5.2 インチに Claude 以外も載せられるかを調べた。
+
+- Claude: 利用枠 API の `limits` は 3 つ（5 時間・週次・Fable 週次）で、画面に出しているものがすべて
+- Gemini CLI（公式 `docs/resources/quota-and-pricing.md`）: Google アカウントでは 1 日の回数（無料 1,000・Google AI Pro 1,500・Ultra 2,000）。5 時間の枠は無い
+- Antigravity（公式 https://antigravity.google/docs/plans ）: Pro・Ultra は「5 時間ごとに回復」で週の上限もある。量は公表していない
+- この Mac で Orca から使っているのは Antigravity（`agy` 1.3.1）。Gemini CLI（`gemini`）は入っていない。Orca 1.4.222 は Gemini と Antigravity を別々に読む（`app.asar` の `out/main/index.js`）
+  - Gemini: `~/.gemini/oauth_creds.json` のトークンで内部 API（`cloudcode-pa.googleapis.com/v1internal:loadCodeAssist`・`retrieveUserQuota`）を呼ぶ。トークンの更新に Gemini CLI 本体の OAuth クライアントを使い、更新したトークンをこのファイルに書き戻す
+  - Antigravity: `agy -p /usage --output-format json --print-timeout 20s` を実行して結果の JSON を読む。`agy` 1.1.11 以上が条件で、それより古い版は `/usage` をプロンプトとして扱い枠を使ってしまう（Orca は応答の `num_turns` が 1 以上か `conversation_id` があると取得をやめる）
+- `agy` 1.3.1 で `/usage` を実行した結果（2026-10-11）: `status` は `SUCCESS`、`num_turns` は 0（枠を使っていない）。`command.data.groups` に「Gemini Models」と「Claude and GPT models」の 2 グループがあり、それぞれに `window` が `5h` と `weekly` の枠（`remaining_fraction`・`reset_time`）がある。`description` の文言は「Within each group, models share a weekly limit and a 5-hour limit. … your weekly limit is tied directly to your individual tier.」
+- 5.2 インチに Antigravity を載せる場合は、内部 API を自分で呼ばず、`agy` の `/usage` の結果を読めばよい（公式の CLI の命令）。取得のたびに `agy` を起動するので、間隔と、版が変わって `/usage` が命令として扱われなくなったときの止め方（Orca と同じく `num_turns` を見る）を決めてから作る
+
 ## 5. 残っている作業（上から順に）
 
 1〜5 は 2026-10-05 に終えた（README.md、CLAUDE.md、requirements.txt と .gitignore、自動起動の作成と登録、git の初期化と push）。
@@ -320,6 +333,7 @@ scripts/uninstall-launch-agent.sh                                 # 自動起動
     - **2026-10-11 0:42 に、ユーザーの指示で 3.5 インチをサーバーの状態の画面に切り替えた。**利用枠の常駐は `scripts/install-launch-agent.sh --device 5.2` で登録し直し（5.2 インチが届くまで接続を待つだけで、API は呼ばない）、サーバーの状態の常駐を `scripts/install-launch-agent.sh --monitor --device 3.5` で登録した（ログは `~/Library/Logs/claude-usage-display-monitor.log`）。0:42:25 に接続し、画面の送信まで済んだ。**5.2 インチが届くまで、利用枠はどの画面にも出ない**
     - **縦置きにした**（2026-10-11 0:58、ユーザーの指示）。見本の画像で案 B（名前の下にリング、リングの中に数字の 2×2）を選んだ。実機で `test-pattern --portrait` を送ると天地が逆だったので、`--flip`（縦の逆、命令の値 1）で正しいことをユーザーが確かめた。いまの登録は `scripts/install-launch-agent.sh --monitor --device 3.5 --portrait --flip`
     - 実機を見たユーザーの指示で、縦置きの名前（15→18 ピクセル）・しきい値（12→14）・リング（半径 46→56、太さ 10→12）・リングの中の数字（30→34）を大きくし、ユーザーが実機で確かめて決めた（2026-10-11 1:00。`monitor_screen.PORTRAIT`）
+    - 続けて、見出しの下の監視の状態（「監視 正常」・ジョブ障害の件数）を 13→18 ピクセル（点の半径 4.5→6）、赤の画面の帯の中のアラートを 15→18 ピクセルにした（2026-10-11 2:00、ユーザーの指示）。アラートが 2 件以上のときは、1 行に「ほか N 件」まで詰めると 12 ピクセルまで縮む（変更前も同じ）ので、縦置きだけ帯を 2 行にし、2 行目に「ほか N 件」を出す。横置きは変えていない（変更前のコードと 1 ピクセルも違わないことを確かめた）
     - 切り替えの時点で、外形・死活監視の障害は 0 件だった。2026-10-10 22:38 に残っていた 3 件（設定のずれ・ジョブ AI_MODELS・BILLING）は、その後に解消していた（ユーザーに引き継ぎの文章を渡し、そのサービスの開発のセッションに引き継いだもの）
     - **画面全体を赤にする値の条件を、CloudWatch のアラームと同じにした**（2026-10-11、ユーザーの指示。記事を書くセッションが、アラームの設定と比べて見つけた）。直近 1 分の平均がしきい値以上になるだけで赤にしていたため、アラームが「瞬間的な高負荷を拾わない」ために持つ連続の条件（CPU・メモリは 1 分×5、スワップは 5 分×3、ディスクは 1 回）が効いていなかった。使っているサーバーの過去 14 日（09-27〜10-11）の値に当てると、直す前の判定では 14 回（CPU 13・スワップ 1。cron やデプロイの 1〜4 分の山が 12 回）赤になり、アラームの条件に当たるのは 2 回（32 分・16 分の CPU）だった。直した判定では同じ 14 日で 2 回
       - 各メトリクスに `period`（平均を取る秒数）と `datapoints`（続けて超えた回数）を持たせ、`GetMetricStatistics` の `Period` に `period` を渡し、いちばん新しい点から途切れずにしきい値以上が続いた回数（`over_streak`）が `datapoints` に達したら赤にする。間の空いた点は続いていないとみなす。1 回だけの山では、リングだけが赤になる
