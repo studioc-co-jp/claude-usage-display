@@ -318,3 +318,9 @@ MIT。著作権者は株式会社studio C です。本文は、GitHub の Licens
 8. **リスク**: Consumer Terms §12「Termination」で、違反と判断されれば、予告なしに利用停止・解約され、返金されない。措置が API の遮断か、アカウントの停止かは、文書に書かれていない。利用枠を読むだけのツールが止められたという報告は、2026-10-09 の検索（3 回）でも、Anthropic 公式リポジトリの issue #31637（この API の回数制限についての報告。Anthropic の社員の返答は無く、ボットが「invalid」を付けて、放置で閉じた）でも見つからなかった。見つかったのは、AI へのリクエストを送るツールへの措置（2026 年）と、別の原因（セッションキーの漏えい）による停止だけ
 9. **ADE（Agent Development Environment）の Orca（https://www.onorca.dev/ ）や、VS Code の拡張機能 Claude Usage Meter（https://marketplace.visualstudio.com/items?itemName=shivakrishnakokkula.claude-usage-meter ）も同じ方式であること**（`docs/handover.md` §6）。記事では「Orca」とだけ書かず、「ADE の Orca」としてリンクを付ける（2026-10-09 ユーザーの指示）。ADE は Orca の公式サイトの説明（"Orca is the Agent Development Environment (ADE) for shipping with coding agents."）による。Orca の名乗り（User-Agent）の件は書かない。モデル別の週次はこの API でしか取れず、公式に値を受け取れるステータスラインには Fable 週次が無い。そのため、表示するツールはこの方式になる
 10. **公開する場合は、README と記事に、規約上の位置づけと、公式に説明されていない API を使っていることを明記する**
+
+## 13. 5.2 インチ版の記事に必ず入れること（ユーザーの指示）
+
+5.2 インチが届き、Mac で動いてから書く記事（`docs/handover.md` §5-9）に入れる。
+
+1. **3.5 インチのモニターは、分解して外装を黒く塗装したうえで、サーバー監視に使うことにした**（2026-10-11）。3.5 インチは間違えて白を注文したもの（§12 の 3）。サーバー監視の画面は `docs/handover.md` §5-10（`monitor` コマンド、縦置き、異常のときは画面全体を赤）
