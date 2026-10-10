@@ -170,7 +170,8 @@ tail -f ~/Library/Logs/claude-usage-display.log
 ![サーバーの状態の画面（見本の値・正常）](docs/images/monitor-normal.png)
 
 - 2×2 に、小さなリングと大きな数字を並べます。リングの色は、しきい値の 15 ポイント手前からオレンジ、しきい値以上で赤です
-- **異常のときは画面全体を明るい赤にします。**対象は、値がしきい値以上のとき、値が 5 分以上届かないとき、監視が「サイトの障害」と判定したとき、監視の状態ファイルが 5 分以上更新されないときです。赤い地では、異常の項目を白ではっきり、ほかを薄く出し、見出しの中央に最初の異常を出します
+- **異常のときは画面全体を明るい赤にします。**対象は、値がしきい値以上のまま続いたとき（`period` 秒ごとの平均で `datapoints` 回。CloudWatch のアラームと同じ値を書けば、アラームと同じ条件になります）、値が 5 分以上届かないとき（`period` が長いときは 2 周期）、監視が「サイトの障害」と判定したとき、監視の状態ファイルが 5 分以上更新されないときです。赤い地では、異常の項目を白ではっきり、ほかを薄く出し、見出しの中央に最初の異常を出します
+- 1 回だけしきい値を超えた山では、画面は赤にせず、リングだけを赤にします。直近 1 分で赤にしていたときは、cron やデプロイの 1〜4 分の山でも画面全体が赤になり、使っているサーバーの過去 14 日の値では、アラームの条件に当たる 2 回に対して 14 回赤になっていました（2026-10-11 に直した）
 - ジョブの障害など、サイトそのものではない監視の障害は、地を黒のまま、見出しにオレンジで件数を出します
 - この Mac から AWS に届かないときは、見出しにオレンジで理由を出し、前回の値を残します（サイトの異常と区別するため、赤にはしません）
 
@@ -184,11 +185,11 @@ tail -f ~/Library/Logs/claude-usage-display.log
 
 1. 読み取り専用の IAM ユーザーを作る。与える権限は `cloudwatch:GetMetricStatistics` と、監視の状態ファイルだけの `s3:GetObject` の 2 つです
 2. その鍵を Keychain に置く。サービス名は任意で、アカウント名をアクセスキー ID、パスワードをシークレットにします。値をコマンドの引数に載せないよう、`security -i` の標準入力から渡します
-3. `monitor.example.toml` を `monitor.toml` に写し、リージョン・Keychain のサービス名・メトリクス（4 つ）・しきい値・状態ファイルを書く。`monitor.toml` は git に入れません（`.gitignore`）
+3. `monitor.example.toml` を `monitor.toml` に写し、リージョン・Keychain のサービス名・メトリクス（4 つ）・しきい値・赤にする条件（`period`・`datapoints`）・状態ファイルを書く。`monitor.toml` は git に入れません（`.gitignore`）
 4. 画像で確かめる: `.venv/bin/python -m claude_usage_display monitor --preview monitor.png`（見本の値は `--demo normal|alert|jobs`）
 5. 常駐させる: `scripts/install-launch-agent.sh --monitor --device 3.5`（縦置きなら `--portrait` も）（解除は `scripts/uninstall-launch-agent.sh --monitor`。ログは `~/Library/Logs/claude-usage-display-monitor.log`）
 
-- 値は `GetMetricStatistics` で読みます。CloudWatch の API は月 100 万リクエストまで無料で（`GetMetricData` は対象外のため使いません）、1 分ごとに 4 つ読むと月に約 17 万リクエストです（CloudWatch の料金ページ「Free Tier」）
+- 値は `GetMetricStatistics` で読みます。CloudWatch の API は月 100 万リクエストまで無料で（`GetMetricData` は対象外のため使いません）、1 分ごとに 4 つ読むと月に約 17 万リクエストです（CloudWatch の料金ページ「Free Tier」）。続けて超えた回数は、1 回の呼び出しで読む範囲（`period` ×（`datapoints` ＋ 2）、少なくとも 10 分）の中で数えるので、呼び出しの回数は変わりません
 - 監視の状態ファイルは、S3 の JSON（`{"<種類>:<名前>": {"alerting": true, "reason": "…", "since": 秒}}`）です。種類のうち、どれを赤にするかは `red_kinds`、画面に出す名前は `[state.names]` で決めます
 - **2 台を使い分けるときは、`--device` を必ず付けて登録します**（例: 利用枠は `scripts/install-launch-agent.sh --device 5.2`、サーバーの状態は `scripts/install-launch-agent.sh --monitor --device 3.5`）。既定の `auto` は 5.2 インチを先に探し、無ければ 3.5 インチを使うので、5.2 インチを外したときに、もう一方の画面のディスプレイを取りに行きます
 

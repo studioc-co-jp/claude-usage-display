@@ -319,7 +319,9 @@ def _demo_server_status(config, now: datetime, case: str) -> ServerStatus:
         "jobs": (Incident("job", "nightly-backup", "直近の実行が失敗", now - timedelta(hours=2)),
                  Incident("job", "daily-report", "直近の実行が失敗", now - timedelta(days=5))),
     }[case]
-    metrics = tuple(MetricValue(spec, value, now - timedelta(minutes=1)) for spec, value in zip(config.metrics, values))
+    # しきい値以上の値は、アラームと同じ回数（datapoints）続いているものとして描く
+    metrics = tuple(MetricValue(spec, value, now - timedelta(minutes=1), spec.datapoints if value >= spec.threshold else 0)
+                    for spec, value in zip(config.metrics, values))
     return ServerStatus(metrics, MonitorState(incidents, now - timedelta(seconds=30)), now)
 
 

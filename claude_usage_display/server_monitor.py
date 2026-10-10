@@ -3,8 +3,11 @@
 ``monitor`` コマンドが使う。何を読むか（リージョン・メトリクス・しきい値・監視の状態ファイル）は、
 git に入れない設定ファイル（``monitor.toml``。見本は ``monitor.example.toml``）に書く。
 
-- メトリクスは ``cloudwatch:GetMetricStatistics`` で 1 分ごとの平均を読み、いちばん新しい値を使う
+- メトリクスは ``cloudwatch:GetMetricStatistics`` で ``period`` 秒ごとの平均を読み、いちばん新しい値を使う
   （GetMetricData は無料の範囲の対象外のため使わない。CloudWatch の料金ページ「Free Tier」）
+- 画面を赤にするのは、しきい値以上が ``datapoints`` 回続いたとき。CloudWatch のアラームと同じ ``period`` と
+  ``datapoints`` を書けば、アラームと同じ条件で赤になる。1 回だけの山では、リングだけが赤になる
+  （2026-10-11。直近 1 回で赤にしていたときは、cron やデプロイの 1〜4 分の山でも画面全体が赤になっていた）
 - 監視の状態ファイルは、S3 の JSON（``{"<種類>:<名前>": {"alerting": bool, "reason": str, "since": 秒}}``）
 - 鍵は Keychain に置いた読み取り専用の IAM ユーザーのもの（アカウント名 = アクセスキー ID、
   パスワード = シークレット）。値をログや画面に出さない
@@ -18,8 +21,8 @@ import tomllib
 from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
 
-METRIC_WINDOW = timedelta(minutes=10)   # この範囲の 1 分ごとの平均を読み、いちばん新しい値を使う
-METRIC_STALE = timedelta(minutes=5)     # これより古い値しかなければ「届いていない」
+METRIC_WINDOW = timedelta(minutes=10)   # 少なくともこの範囲の平均を読む（続けて超えた回数を数えるため、必要なら広げる）
+METRIC_STALE = timedelta(minutes=5)     # これより古い値しかなければ「届いていない」（period が長いときは 2 周期）
 WARNING_MARGIN = 15                     # しきい値のこれだけ手前からオレンジにする
 JST = timezone(timedelta(hours=9))
 
@@ -43,6 +46,16 @@ class MetricSpec:
     name: str
     dimensions: tuple[tuple[str, str], ...]
     threshold: float
+    period: int = 60       # 平均を取る秒数（CloudWatch のアラームの Period）
+    datapoints: int = 1    # しきい値以上がこの回数続いたら赤にする（アラームの DatapointsToAlarm）
+
+    @property
+    def stale_after(self) -> timedelta:
+        return max(METRIC_STALE, timedelta(seconds=2 * self.period))
+
+    @property
+    def window(self) -> timedelta:
+        return max(METRIC_WINDOW, timedelta(seconds=self.period * (self.datapoints + 2)))
 
 
 @dataclass(frozen=True)
@@ -67,6 +80,15 @@ class MetricValue:
     spec: MetricSpec
     value: float | None
     at: datetime | None
+    streak: int | None = None  # いちばん新しい値から、しきい値以上が続いている回数（None は値だけで判断する）
+
+    @property
+    def sustained(self) -> bool:
+        """しきい値以上が ``datapoints`` 回続いているか。"""
+        if self.value is None:
+            return False
+        streak = self.streak if self.streak is not None else int(self.value >= self.spec.threshold)
+        return streak >= self.spec.datapoints
 
 
 @dataclass(frozen=True)
@@ -115,7 +137,7 @@ def load_config(path: str) -> MonitorConfig:
         metrics = tuple(
             MetricSpec(m["label"], m["namespace"], m["name"],
                        tuple(sorted((str(k), str(v)) for k, v in m.get("dimensions", {}).items())),
-                       float(m["threshold"]))
+                       float(m["threshold"]), int(m.get("period", 60)), int(m.get("datapoints", 1)))
             for m in raw["metrics"])
         state = raw.get("state", {})
         config = MonitorConfig(
@@ -128,6 +150,9 @@ def load_config(path: str) -> MonitorConfig:
         raise ConfigError(f"設定ファイルの項目が足りないか、形が違います: {e!r}") from e
     if len(config.metrics) != 4:
         raise ConfigError(f"metrics は 4 つ書く（画面が 2×2 のため）: {len(config.metrics)} 個")
+    for spec in config.metrics:
+        if spec.period < 60 or spec.period % 60 or spec.datapoints < 1:
+            raise ConfigError(f"{spec.label}: period は 60 の倍数、datapoints は 1 以上にする")
     return config
 
 
@@ -137,6 +162,21 @@ def latest(datapoints: list[dict]) -> tuple[float | None, datetime | None]:
         return None, None
     point = max(datapoints, key=lambda p: p["Timestamp"])
     return float(point["Average"]), point["Timestamp"]
+
+
+def over_streak(datapoints: list[dict], threshold: float, period: int) -> int:
+    """いちばん新しい平均から数えて、しきい値以上が途切れずに続いている回数。
+
+    間が空いた（``period`` より離れた）点は、続いていないとみなす（アラームも欠けた点を超えたとは数えない）。
+    """
+    streak, previous = 0, None
+    for point in sorted(datapoints, key=lambda p: p["Timestamp"], reverse=True):
+        if point["Average"] < threshold:
+            break
+        if previous is not None and (previous - point["Timestamp"]).total_seconds() > period:
+            break
+        streak, previous = streak + 1, point["Timestamp"]
+    return streak
 
 
 def parse_state(document: dict, updated_at: datetime) -> MonitorState:
@@ -158,11 +198,15 @@ def assess(status: ServerStatus, config: MonitorConfig, now: datetime) -> Assess
     stopped, site, missing, over, warnings, alerting_metrics = [], [], [], [], [], set()
     for metric in status.metrics:
         spec = metric.spec
-        if metric.value is None or metric.at is None or now - metric.at > METRIC_STALE:
+        if metric.value is None or metric.at is None or now - metric.at > spec.stale_after:
             missing.append(f"{spec.label}の値が届いていません")
             alerting_metrics.add(spec.label)
-        elif metric.value >= spec.threshold:
-            over.append(f"{spec.label} {metric.value:.0f}%（しきい値 {spec.threshold:g}%）")
+        elif metric.sustained:
+            if spec.datapoints > 1:
+                minutes = spec.period * spec.datapoints // 60
+                over.append(f"{spec.label} {metric.value:.0f}%（{spec.threshold:g}% 以上が {minutes} 分）")
+            else:
+                over.append(f"{spec.label} {metric.value:.0f}%（しきい値 {spec.threshold:g}%）")
             alerting_metrics.add(spec.label)
     if status.monitor is not None:
         if now - status.monitor.updated_at > config.state_stale:
@@ -237,9 +281,10 @@ class AwsReader:
                 response = cloudwatch.get_metric_statistics(
                     Namespace=spec.namespace, MetricName=spec.name,
                     Dimensions=[{"Name": k, "Value": v} for k, v in spec.dimensions],
-                    StartTime=now - METRIC_WINDOW, EndTime=now, Period=60, Statistics=["Average"])
-                value, at = latest(response.get("Datapoints", []))
-                metrics.append(MetricValue(spec, value, at))
+                    StartTime=now - spec.window, EndTime=now, Period=spec.period, Statistics=["Average"])
+                points = response.get("Datapoints", [])
+                value, at = latest(points)
+                metrics.append(MetricValue(spec, value, at, over_streak(points, spec.threshold, spec.period)))
             monitor = None
             if self.config.state_bucket and self.config.state_key:
                 obj = s3.get_object(Bucket=self.config.state_bucket, Key=self.config.state_key)

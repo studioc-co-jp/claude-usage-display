@@ -18,19 +18,26 @@ red_kinds = ["http", "tls"]  # 障害のとき画面を赤にする監視の種�
 top = "トップ"
 login = "ログイン"
 
-# 4 つ書く（2×2 の左上・右上・左下・右下の順）。しきい値以上で画面を赤にする
+# 4 つ書く（2×2 の左上・右上・左下・右下の順）。
+# period 秒ごとの平均で、しきい値以上が datapoints 回続いたら画面を赤にする（省略すると period 60・datapoints 1）。
+# CloudWatch のアラームと同じ Period と DatapointsToAlarm を書くと、アラームと同じ条件で赤になる。
+# 1 回だけの山では、リングだけが赤になる
 [[metrics]]
 label = "CPU"
 namespace = "CWAgent"
 name = "cpu_usage_active"
 dimensions = { cpu = "cpu-total" }
 threshold = 80
+period = 60
+datapoints = 5   # 5 分続いたら
 
 [[metrics]]
 label = "メモリ"
 namespace = "CWAgent"
 name = "mem_used_percent"
 threshold = 85
+period = 60
+datapoints = 5
 
 [[metrics]]
 label = "ディスク"
@@ -44,3 +51,5 @@ label = "スワップ"
 namespace = "CWAgent"
 name = "swap_used_percent"
 threshold = 90
+period = 300
+datapoints = 3   # 5 分の平均が 3 回（15 分）続いたら

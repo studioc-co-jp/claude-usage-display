@@ -232,7 +232,7 @@ class MonitorRunnerTest(unittest.TestCase):
         opened.assert_called_once_with(False, "3.5", False)
         self.assertEqual(shown, [(0, 0, 0), cli.gauge.RED, (0, 0, 0)])
         messages = [r.getMessage() for r in logs.records]
-        self.assertIn("アラート: CPU 92%（しきい値 80%）", messages)
+        self.assertIn("アラート: CPU 92%（80% 以上が 5 分）", messages)
         self.assertIn("アラートが解消しました", messages)
 
 
