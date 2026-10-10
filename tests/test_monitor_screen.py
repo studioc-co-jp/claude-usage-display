@@ -53,6 +53,18 @@ class MonitorScreenTest(unittest.TestCase):
         self.assertTrue(near(image.getpixel((round(cx + radius - width / 2), 80 + cy)), (255, 255, 255)))
         self.assertFalse(near(image.getpixel((round(160 + cx + radius - width / 2), 80 + cy)), (255, 255, 255)))
 
+    def test_portrait_splits_two_or_more_alerts_into_two_lines(self):
+        cfg = config()
+        below_one_line = (40, ms.PORTRAIT.pill[3] + 8)  # 1 行の帯の下、2 行の帯の中
+        one = status(values=(92, 61, 47, 3))
+        self.assertEqual(len(sm.assess(one, cfg, NOW).alerts), 1)
+        image = ms.render(one, sm.assess(one, cfg, NOW), cfg, portrait=True)
+        self.assertEqual(image.getpixel(below_one_line), RED)
+        two = status(values=(92, 90, 47, 3))
+        self.assertEqual(len(sm.assess(two, cfg, NOW).alerts), 2)
+        image = ms.render(two, sm.assess(two, cfg, NOW), cfg, portrait=True)
+        self.assertEqual(image.getpixel(below_one_line), (255, 255, 255))
+
 
 if __name__ == "__main__":
     unittest.main()
