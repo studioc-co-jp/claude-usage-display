@@ -44,6 +44,12 @@ SIZES = {"480x320": (480, 320), "1280x720": (1280, 720)}  # 3.5 インチと 5.2
 DEVICES = ("auto", "3.5", "5.2")
 
 
+def device_ids(device: str) -> str:
+    """接続を待つときにログへ出す USB の ID。"""
+    return {"3.5": f"{VID:04x}:{PID:04x}", "5.2": f"{TURZX_VID:04x}:" + "/".join(f"{p:04x}" for p in TURZX_MODELS)}.get(
+        device, DEVICE_IDS)
+
+
 def open_display(flipped: bool, device: str = "auto") -> TuringRevA | TurzxUsb:
     """つながっているディスプレイを開く。
 
@@ -214,7 +220,7 @@ class Runner:
             display = open_display(self.args.flip, self.args.device)
         except DeviceNotFound:
             if not self.waiting_logged:
-                log.info("ディスプレイの接続を待っています（%s）", DEVICE_IDS)
+                log.info("ディスプレイの接続を待っています（%s）", device_ids(self.args.device))
                 self.waiting_logged = True
             return False
         except Exception as e:  # noqa: BLE001
@@ -343,7 +349,7 @@ class MonitorRunner:
             display.initialize(self.args.brightness)
         except DeviceNotFound:
             if not self.waiting_logged:
-                log.info("ディスプレイの接続を待っています（%s）", self.args.device)
+                log.info("ディスプレイの接続を待っています（%s）", device_ids(self.args.device))
                 self.waiting_logged = True
             return False
         except Exception:  # noqa: BLE001
