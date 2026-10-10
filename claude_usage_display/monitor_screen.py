@@ -38,20 +38,22 @@ class _Layout:
     dot_y: float                                 # 監視の状態の点の中心
     cells: tuple[tuple[int, int], ...]           # 2×2 の各区画の左上
     ring: tuple[float, float, float, float]      # 中心 x・中心 y・半径・太さ
-    label: tuple[float, float, str]              # 名前の位置と anchor
+    label: tuple[float, float, str, int]         # 名前の位置・anchor・大きさ
     number: tuple[float, float, int, int, bool]  # 数字の位置・大きさ・% の大きさ・中央にそろえるか
-    threshold: tuple[float, float, str]          # しきい値の位置と anchor
+    threshold: tuple[float, float, str, int]     # しきい値の位置・anchor・大きさ
     dividers: tuple[tuple[float, float, float, float], ...]
 
 
 LANDSCAPE = _Layout(
     size=(480, 320), inset=20, title_baseline=25, pill=(116, 6, 364, 32), status_baseline=25, dot_y=20,
-    cells=((20, 44), (250, 44), (20, 182), (250, 182)), ring=(52, 68, 48, 11), label=(118, 50, "ls"),
-    number=(118, 98, 40, 18, False), threshold=(118, 120, "ls"), dividers=((240, 56, 240, 304), (20, 182, 460, 182)))
+    cells=((20, 44), (250, 44), (20, 182), (250, 182)), ring=(52, 68, 48, 11), label=(118, 50, "ls", 15),
+    number=(118, 98, 40, 18, False), threshold=(118, 120, "ls", 12), dividers=((240, 56, 240, 304), (20, 182, 460, 182)))
 PORTRAIT = _Layout(
     size=(320, 480), inset=16, title_baseline=26, pill=(16, 40, 304, 66), status_baseline=57, dot_y=52,
-    cells=((0, 80), (160, 80), (0, 280), (160, 280)), ring=(80, 84, 46, 10), label=(80, 24, "ms"),
-    number=(80, 95, 30, 14, True), threshold=(80, 160, "ms"), dividers=((160, 92, 160, 466), (16, 280, 304, 280)))
+    # 名前・しきい値・リングは、実機を見たユーザーの指示で大きくした（2026-10-11。名前 15→18、しきい値 12→14、
+    # リングの半径 46→56・太さ 10→12、数字 30→34）
+    cells=((0, 80), (160, 80), (0, 280), (160, 280)), ring=(80, 100, 56, 12), label=(80, 28, "ms", 18),
+    number=(80, 112, 34, 16, True), threshold=(80, 184, "ms", 14), dividers=((160, 92, 160, 466), (16, 280, 304, 280)))
 
 
 class _Shapes:
@@ -153,14 +155,14 @@ def render(status: ServerStatus | None, assessment: Assessment | None, config: M
     # 2×2
     for line in layout.dividers:
         draw.line(line, fill=divider, width=1)
-    label_x, label_y, label_anchor = layout.label
+    label_x, label_y, label_anchor, label_size = layout.label
     number_x, number_y, number_size, unit_size, centered = layout.number
-    threshold_x, threshold_y, threshold_anchor = layout.threshold
+    threshold_x, threshold_y, threshold_anchor, threshold_size = layout.threshold
     for index, spec in enumerate(specs):
         x, y = layout.cells[index]
         value = metrics[index].value if metrics else None
         strong = WHITE if (not red or spec.label in alerting) else faint
-        draw.text((x + label_x, y + label_y), spec.label, font=font(15, 6), fill=strong, anchor=label_anchor)
+        draw.text((x + label_x, y + label_y), spec.label, font=font(label_size, 6), fill=strong, anchor=label_anchor)
         number = "--" if value is None else f"{value:.0f}"
         number_font, unit_font = rounded(number_size), rounded(unit_size)
         number_width = draw.textlength(number, font=number_font)
@@ -170,6 +172,6 @@ def render(status: ServerStatus | None, assessment: Assessment | None, config: M
         draw.text((left, y + number_y), number, font=number_font, fill=strong, anchor="ls")
         if value is not None:
             draw.text((left + number_width + gap, y + number_y), "%", font=unit_font, fill=faint, anchor="ls")
-        draw.text((x + threshold_x, y + threshold_y), f"しきい値 {spec.threshold:g}%", font=font(12, SMALL_WEIGHT),
-                  fill=faint, anchor=threshold_anchor)
+        draw.text((x + threshold_x, y + threshold_y), f"しきい値 {spec.threshold:g}%",
+                  font=font(threshold_size, SMALL_WEIGHT), fill=faint, anchor=threshold_anchor)
     return image
