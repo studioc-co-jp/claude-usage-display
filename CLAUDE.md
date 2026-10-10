@@ -14,7 +14,7 @@ Claude Code の利用枠（5 時間・週次・Fable 週次）を、USB でつ�
 - macOS ではシリアル（`/dev/cu.usbmodem…`）で送らない。`claude_usage_display/turing.py` の docstring にある 4 つの規則（コマンドは 1 転送ずつ・`SET_ORIENTATION` は 11 バイト・画素は 64 バイトの倍数で区切る・画素の途中にほかを書かない）を崩さない
 - 5.2 インチ（TURZX の新しい世代、`1cbe:0050`）の送信部は `claude_usage_display/turzx_usb.py`。仕様の出典はその docstring（ライブラリの `lcd_comm_turing_usb.py` は GPL なので仕様だけを読む）。**実機ではまだ確かめていない**（2026-10-09 時点）。届いたら `docs/handover.md` §5-9 の手順で確かめる
 - Gemini（Antigravity）の枠は `claude_usage_display/antigravity.py` が `agy -p /usage` で読む。**Google の内部 API を自分で呼ばない。Antigravity のログイン情報も読まない。**`agy` には必ず `--log-file` を付け、専用のフォルダで実行する（理由はその docstring と `docs/handover.md` §4-10）
-- **Claude・Gemini のロゴの画像をリポジトリに入れない。**README の画像・テスト・記事の写真にも写さない（`--icons` を付けずに作る）。商標の指針がロゴの使用に承認を求めるため（README「アイコン」）。この Mac では `~/Library/Application Support/claude-usage-display/icons/` に置いてある
+- **Claude・Gemini のロゴの画像をリポジトリに入れない。**README の画像・テスト・記事の写真にも写さない（`--icons` を付けずに作る）。商標の指針がロゴの使用に承認を求めるため（README「アイコン」）。この Mac では `~/Library/Application Support/claude-usage-display/icons/` に置いてあるが、ユーザーが見づらいとして使わないことにした（2026-10-11。常駐は `--icons` 無し）
 - **サーバーの状態の画面（`monitor` コマンド。`server_monitor.py`・`monitor_screen.py`）の実際の設定は `monitor.toml`（git に入れない）に置く。**このリポジトリは public なので、AWS のアカウント ID・バケット名・IAM ユーザー名・Keychain のサービス名・監視の ID など、特定のサービスの構成が分かる値をコード・文書・テスト・commit に書かない。見本（`monitor.example.toml`・テスト・README の画像）は架空の値（example.com）で作る。IAM ユーザーを作る手順は、そのサービスの非公開のリポジトリに置く
 - 記事はこのリポジトリに置かない。`~/projects/studioc` で起動したセッションが `/techblog-write` で書く。素材（調べた事実と出典、実機で分かったこと）は `docs/article-material.md` に残す。実機で分かったことは同文書の §10 に追記する
 - commit は `git commit --only -m "…" -- <パス>` で行う。新規ファイルは先に `git add <そのパス>`。`git add -A` / `git add .` は使わない（hook が止める）

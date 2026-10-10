@@ -250,6 +250,8 @@ scripts/uninstall-launch-agent.sh                                 # 自動起動
   - `--log-file` を付けないと、1 回 21 KB のログが `~/.gemini/antigravity-cli/log/` に増え、`cli.log` の向きがその新しいファイルに変わる（2026-10-11 01:54 の 1 回目で起きた。Orca で動いている agy のログは別のファイルに書き続けていた）。付けると、どちらも起きない。ただし `implicit/` に 450 バイトほどのファイルが毎回 1 つ増える（01:54 と 02:16 の 2 回で 1 つずつ）
   - 実行したフォルダが作業場所になるので、専用の `~/Library/Application Support/claude-usage-display/agy/` で実行し、ログもそこに直近の 1 回分だけ置く。取得は既定で 15 分ごと（`--gemini-interval`、300 秒以上）。launchd は PATH を渡さないので、`agy` は `/opt/homebrew/bin` なども探す（PATH を `/usr/bin:/bin:/usr/sbin:/sbin` に絞って読めることを確かめた）
 - **見出しのアイコン**（2026-10-11、ユーザーの指示）: `--icons フォルダ` で `claude.png`・`gemini.png` を見出しの左に出す。Anthropic の Trademark Guidelines（https://www.anthropic.com/legal/trademark-guidelines 、2024-08-01 発効）はロゴの使用に事前の承認を求め、改変を禁じる。Google の商標の指針（https://partnermarketinghub.withgoogle.com/brands/google/trademarks-and-terms/trademark-guidelines-for-proper-usage/ ）は承認された素材だけを使い、製品のアイコンをまねないよう求める。どちらにも個人で使う場合の例外は書かれていない。そこでユーザーが「ロゴは手元だけ」と決めた: 画像は git に入れず、この Mac の `~/Library/Application Support/claude-usage-display/icons/` に置く。README の画像は `--icons` を付けずに作る
+  - **アイコンは使わないことにした**（2026-10-11 2:33、ユーザーの指示）。アイコン付きの画面を見たうえで「情報量が多くて見づらくなる」として、自動起動の登録から `--icons` を外した。機能（`--icons`）と、この Mac の画像のフォルダは、戻せるように残している（横棒の画面を残しているのと同じ考え）
+  - Gemini アプリ（`/Applications/Gemini.app`、`com.google.GeminiMacOS` 1.128.7.1072、署名の TeamIdentifier `EQHXZ8M8AV`）を入れたあとに調べた結果: `AppIcon.icns` は最大 256×256。`Assets.car` に 1024×1024 のアプリのアイコン（白い角丸の四角に星）と、星の印だけの `AppIcon_Assets/gemini`（1024×1024）がある。`assetutil --info` で一覧を出し、AppKit の `Bundle.image(forResource:)` で PNG に書き出せた。使うことになったら、PDF から切り出した星よりこちらのほうが解像度が高い
   - この Mac の画像の出どころ: `claude.png` は Claude.app のアイコン（`Contents/Resources/electron.icns` を `sips` で PNG にしたもの。1024×1024）。`gemini.png` は Google Cloud のアイコンのページ（https://cloud.google.com/icons ）の手引きの PDF（`google-cloud-product-icons.pdf`）の 4 ページ目にある Gemini の画像（星の印と「Gemini」の文字の組）から、星の印を切り出したもの（341×340）。配布の ZIP（コアプロダクト・カテゴリ・以前のアイコン）には Gemini の画像は無かった（2026-10-11 に確認）
 
 ## 5. 残っている作業（上から順に）
@@ -329,7 +331,7 @@ scripts/uninstall-launch-agent.sh                                 # 自動起動
       2. USB-A のハブにつなぎ、`.venv/bin/python -m claude_usage_display probe`。`1cbe:0050 TURZX 5.2 インチ` と出て、「インターフェースを確保できました」で終われば次へ。別の ID なら、中身の世代が違う個体（§4-9 の #727）。一覧の出力をそのまま記録する
       3. `.venv/bin/python -m claude_usage_display test-pattern`。命令 10（同期）・14（明るさ）・102（PNG）の応答が表示される。先頭が「命令番号 c8 時刻 4 バイト」なら想定どおり。違う形なら、表示された応答を記録し、`turzx_usb.check_response` を実機に合わせて直す（明るさの命令に応答が無いことも考えられる。ライブラリは明るさの応答を確かめていない）
       4. 画面に確認画面が出るか、左上が赤で「左上」か（逆なら `--flip`）、1280×720 と出るかを見る
-   2. 通信できたら: `run` で動かす（ゲージ型は 1280×720 で描く。2026-10-09 に先に作り、ユーザーが見本の画像で確かめて決めた。見本は `docs/images/gauge-1280x720.png`。2026-10-11 に Gemini の枠とアイコンを足した（§4-10）。いまの登録は `scripts/install-launch-agent.sh --device 5.2 --gemini --icons "$HOME/Library/Application Support/claude-usage-display/icons"`）→ 実機で文字の大きさ・色・明るさを見てもらい、必要なら調整する → 自動起動で動かす → 別の記事にする（`docs/article-material.md` §12 の 4）
+   2. 通信できたら: `run` で動かす（ゲージ型は 1280×720 で描く。2026-10-09 に先に作り、ユーザーが見本の画像で確かめて決めた。見本は `docs/images/gauge-1280x720.png`。2026-10-11 に Gemini の枠とアイコンを足した（§4-10）。いまの登録は `scripts/install-launch-agent.sh --device 5.2 --gemini`。アイコンは付けない（§4-10））→ 実機で文字の大きさ・色・明るさを見てもらい、必要なら調整する → 自動起動で動かす → 別の記事にする（`docs/article-material.md` §12 の 4）
    3. 通信できなかったら: 到着から 90 日以内に返品する（ユーザーが判断する）
 
 10. **サーバーの状態の画面（`monitor`）**（2026-10-10 にユーザーの指示で作った。3.5 インチを、会社のサービスのサーバーの監視に使う）
