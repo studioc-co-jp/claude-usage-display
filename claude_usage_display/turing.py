@@ -158,10 +158,15 @@ class UsbTransport:
 
 
 class TuringRevA:
-    def __init__(self, transport, flipped: bool = False):
+    def __init__(self, transport, flipped: bool = False, portrait: bool = False):
+        """``portrait`` は縦置き（320×480）。``flipped`` は上下（縦置きでは天地）を逆にする。"""
         self.transport = transport
-        self.orientation = Orientation.REVERSE_LANDSCAPE if flipped else Orientation.LANDSCAPE
-        self.width, self.height = NATIVE_HEIGHT, NATIVE_WIDTH
+        if portrait:
+            self.orientation = Orientation.REVERSE_PORTRAIT if flipped else Orientation.PORTRAIT
+            self.width, self.height = NATIVE_WIDTH, NATIVE_HEIGHT
+        else:
+            self.orientation = Orientation.REVERSE_LANDSCAPE if flipped else Orientation.LANDSCAPE
+            self.width, self.height = NATIVE_HEIGHT, NATIVE_WIDTH
 
     def _send_pixels(self, frame: bytes) -> None:
         for start in range(0, len(frame), CHUNK):

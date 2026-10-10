@@ -150,6 +150,16 @@ class TurzxUsbTest(unittest.TestCase):
         portrait = Image.open(io.BytesIO(transport.writes[-1][512:])).convert("RGB")
         self.assertEqual(portrait.getpixel((0, 1279)), (255, 0, 0))
 
+    def test_portrait_is_sent_without_rotation(self):
+        transport = FakeTransport()
+        display = TurzxUsb(transport, clock=lambda: NOW, portrait=True)
+        self.assertEqual((display.width, display.height), (720, 1280))
+        image = Image.new("RGB", (720, 1280))
+        image.putpixel((0, 0), (255, 0, 0))
+        display.show(image)
+        sent = Image.open(io.BytesIO(transport.writes[-1][512:])).convert("RGB")
+        self.assertEqual((sent.size, sent.getpixel((0, 0))), ((720, 1280), (255, 0, 0)))
+
     def test_wrong_size_is_rejected_before_sending(self):
         with self.assertRaises(ValueError):
             self.display.show(Image.new("RGB", (480, 320)))

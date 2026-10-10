@@ -176,13 +176,17 @@ tail -f ~/Library/Logs/claude-usage-display.log
 
 ![異常のとき（見本の値）](docs/images/monitor-alert.png)
 
+縦に置くときは `--portrait` を付けます（320×480。名前の下にリング、リングの中に数字）。天地が逆に見えるときは `--flip` も付けます。置き方に合う向きは、`test-pattern --portrait --device 3.5`（と `--flip`）で確かめます。
+
+![縦置き（見本の値）](docs/images/monitor-portrait.png)
+
 ### 準備
 
 1. 読み取り専用の IAM ユーザーを作る。与える権限は `cloudwatch:GetMetricStatistics` と、監視の状態ファイルだけの `s3:GetObject` の 2 つです
 2. その鍵を Keychain に置く。サービス名は任意で、アカウント名をアクセスキー ID、パスワードをシークレットにします。値をコマンドの引数に載せないよう、`security -i` の標準入力から渡します
 3. `monitor.example.toml` を `monitor.toml` に写し、リージョン・Keychain のサービス名・メトリクス（4 つ）・しきい値・状態ファイルを書く。`monitor.toml` は git に入れません（`.gitignore`）
 4. 画像で確かめる: `.venv/bin/python -m claude_usage_display monitor --preview monitor.png`（見本の値は `--demo normal|alert|jobs`）
-5. 常駐させる: `scripts/install-launch-agent.sh --monitor --device 3.5`（解除は `scripts/uninstall-launch-agent.sh --monitor`。ログは `~/Library/Logs/claude-usage-display-monitor.log`）
+5. 常駐させる: `scripts/install-launch-agent.sh --monitor --device 3.5`（縦置きなら `--portrait` も）（解除は `scripts/uninstall-launch-agent.sh --monitor`。ログは `~/Library/Logs/claude-usage-display-monitor.log`）
 
 - 値は `GetMetricStatistics` で読みます。CloudWatch の API は月 100 万リクエストまで無料で（`GetMetricData` は対象外のため使いません）、1 分ごとに 4 つ読むと月に約 17 万リクエストです（CloudWatch の料金ページ「Free Tier」）
 - 監視の状態ファイルは、S3 の JSON（`{"<種類>:<名前>": {"alerting": true, "reason": "…", "since": 秒}}`）です。種類のうち、どれを赤にするかは `red_kinds`、画面に出す名前は `[state.names]` で決めます

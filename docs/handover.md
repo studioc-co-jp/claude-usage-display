@@ -31,7 +31,7 @@ Claude Code の利用枠 3 つ（**5 時間・週次・Fable 週次**）を、Ma
 - **自動起動は登録済み**（2026-10-09 08:22 に既定のオプションで登録し直し、ログに「ディスプレイに接続しました」が出た。§5-6 の 7）。ディスプレイをつなぐ前に一度解除していた（§5-6 の 1）。2026-10-05 に登録したとき（既定のオプション。`~/Library/LaunchAgents/jp.co.studioc.claude-usage-display.plist`、ログは `~/Library/Logs/claude-usage-display.log`）に確かめたことは次のとおり
   - 登録・オプションを変えての登録し直し・誤ったオプションの拒否・解除・強制終了後の起動し直し（約 3 秒）を実際に動かして確かめた
   - launchd から起動しても Keychain の読み取りと利用枠の取得が通ることを、`preview` を 1 回だけ動かす使い捨てのジョブで確かめた（§4-6）
-- テストは 95 件すべて成功（2026-10-10 時点）（`.venv/bin/python -m unittest discover -s tests`）。5.2 インチの送信部（`turzx_usb.py`）を足した後、自動起動を起動し直し、3.5 インチで 12:00・12:01 の描き直しがエラーなく送られたことをログで確かめた
+- テストは 97 件すべて成功（2026-10-11 時点）（`.venv/bin/python -m unittest discover -s tests`）。5.2 インチの送信部（`turzx_usb.py`）を足した後、自動起動を起動し直し、3.5 インチで 12:00・12:01 の描き直しがエラーなく送られたことをログで確かめた
 - この回で見つけて直した不具合（いずれもテストを追加済み）
   - `--brightness` の範囲外（例: 150）が引数解析を通り、接続した時点で初期化の失敗を 10 秒ごとに繰り返す → 引数解析で止める
   - 取得失敗の文言のうち最長の「ログイン切れ（…）」が、時刻と合わせて右端で切れる → 理由と時刻を左右に分け、収まらないときは文字を縮める
@@ -55,10 +55,10 @@ Claude Code の利用枠 3 つ（**5 時間・週次・Fable 週次**）を、Ma
 | `claude_usage_display/render.py` | 横棒の画面（`--theme classic`）と、画面に共通の部品（フォント、リセット時刻の書式）。確認画面（`render_test_pattern`）もここにある |
 | `claude_usage_display/turing.py` | rev A のコマンド組み立て、RGB565（リトルエンディアン）への変換、libusb での送信 |
 | `claude_usage_display/server_monitor.py` | サーバーの状態の画面（`monitor`）の取得と判定。設定（`monitor.toml`、git に入れない）を読み、CloudWatch の `GetMetricStatistics` と S3 の監視の状態ファイルを、Keychain の読み取り専用の鍵で読む。赤にするか（`alerts`）・見出しにオレンジで出すか（`warnings`）を決める |
-| `claude_usage_display/monitor_screen.py` | サーバーの状態の画面を描く（480×320、2×2。異常のときは画面全体を明るい赤） |
+| `claude_usage_display/monitor_screen.py` | サーバーの状態の画面を描く（横置き 480×320・縦置き 320×480 の 2×2。配置は `LANDSCAPE`・`PORTRAIT`。異常のときは画面全体を明るい赤） |
 | `claude_usage_display/turzx_usb.py` | 5.2 インチ（TURZX の新しい世代、`1cbe:0050`）への送信。暗号化した 512 バイトの見出し（DES-CBC、鍵 `slv3tuzx`）と PNG（1 MiB を超えると JPEG）を 1 回で書き、応答を確かめる。横向きの画像を縦長に回して送る。実機では未確認 |
 | `claude_usage_display/__main__.py` | `preview` / `probe` / `test-pattern` / `run` の 4 コマンド。`run` は常駐ループ |
-| `tests/` | 単体テスト 95 件。`fixtures/usage_response.json` は実際の応答から必要な項目だけを残したもの |
+| `tests/` | 単体テスト 97 件。`fixtures/usage_response.json` は実際の応答から必要な項目だけを残したもの |
 | `launchd/jp.co.studioc.claude-usage-display.plist` | 自動起動のひな形（`@…@` をパスに置き換えて使う） |
 | `scripts/install-launch-agent.sh` / `uninstall-launch-agent.sh` | 自動起動の登録（登録し直し）と解除 |
 | `README.md` / `CLAUDE.md` | 使い方と、このリポジトリで作業するときの規則 |
@@ -318,6 +318,7 @@ scripts/uninstall-launch-agent.sh                                 # 自動起動
     - 読み取り専用の IAM ユーザーを作り、鍵をこの Mac の Keychain に置いた。陽性（メトリクスと状態ファイルが読める）と否定（書き込み・アラーム・バケットの一覧・ほかのファイル・ほかのサービスが拒否される）を確かめた。作成の手順とユーザー名は、そのサービスの非公開のリポジトリにある（このリポジトリは public なので書かない）
     - `monitor.toml`（この Mac にだけある）で、実際の値で画面を描けることを `monitor --preview` で確かめた（2026-10-10 12:36）
     - **2026-10-11 0:42 に、ユーザーの指示で 3.5 インチをサーバーの状態の画面に切り替えた。**利用枠の常駐は `scripts/install-launch-agent.sh --device 5.2` で登録し直し（5.2 インチが届くまで接続を待つだけで、API は呼ばない）、サーバーの状態の常駐を `scripts/install-launch-agent.sh --monitor --device 3.5` で登録した（ログは `~/Library/Logs/claude-usage-display-monitor.log`）。0:42:25 に接続し、画面の送信まで済んだ。**5.2 インチが届くまで、利用枠はどの画面にも出ない**
+    - **縦置きにした**（2026-10-11 0:58、ユーザーの指示）。見本の画像で案 B（名前の下にリング、リングの中に数字の 2×2）を選んだ。実機で `test-pattern --portrait` を送ると天地が逆だったので、`--flip`（縦の逆、命令の値 1）で正しいことをユーザーが確かめた。いまの登録は `scripts/install-launch-agent.sh --monitor --device 3.5 --portrait --flip`
     - 切り替えの時点で、外形・死活監視の障害は 0 件だった。2026-10-10 22:38 に残っていた 3 件（設定のずれ・ジョブ AI_MODELS・BILLING）は、その後に解消していた（ユーザーに引き継ぎの文章を渡し、そのサービスの開発のセッションに引き継いだもの）
     - 2026-10-10 1:47:45 に 3.5 インチが USB から外れた（ログ「ディスプレイが外れました」）。12:39 の時点でも USB の一覧に無い。原因はこのセッションでは分かっていない（ユーザーに報告した）。2026-10-11 0:40 にユーザーがつなぎ直し、同じハブの端子（Location ID `0x00111000`）で認識され、利用枠の常駐が 0:40:09 に接続した。0:41 の描き直しもエラーなく送られた
 

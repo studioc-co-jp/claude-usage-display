@@ -41,6 +41,18 @@ class MonitorScreenTest(unittest.TestCase):
         stale = status(age=timedelta(minutes=10))
         self.assertEqual(self.render(stale).getpixel((2, 300)), RED)
 
+    def test_portrait(self):
+        cfg = config()
+        normal, alert = status(), status(values=(92, 61, 47, 3))
+        image = ms.render(normal, sm.assess(normal, cfg, NOW), cfg, portrait=True)
+        self.assertEqual((image.size, image.getpixel((2, 470))), ((320, 480), BACKGROUND))
+        image = ms.render(alert, sm.assess(alert, cfg, NOW), cfg, portrait=True)
+        self.assertEqual(image.getpixel((2, 470)), RED)
+        # CPU（左上の区画）のリングの 3 時の位置は白、メモリ（右上）は薄い色
+        cx, cy, radius, width = ms.PORTRAIT.ring
+        self.assertTrue(near(image.getpixel((round(cx + radius - width / 2), 80 + cy)), (255, 255, 255)))
+        self.assertFalse(near(image.getpixel((round(160 + cx + radius - width / 2), 80 + cy)), (255, 255, 255)))
+
 
 if __name__ == "__main__":
     unittest.main()

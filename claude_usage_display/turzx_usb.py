@@ -184,11 +184,16 @@ class TurzxUsb:
     """横向きの画像を受け取り、縦長に回して送る。"""
 
     def __init__(self, transport, pid: int = 0x0050, flipped: bool = False,
-                 clock: Callable[[], datetime] = datetime.now):
+                 clock: Callable[[], datetime] = datetime.now, portrait: bool = False):
+        """``portrait`` は縦置き（本来の向きのまま送る。``flipped`` で 180 度回す。実機では未確認）。"""
         self.transport = transport
         self.name, native_width, native_height = MODELS[pid]
-        self.width, self.height = native_height, native_width
-        self.rotation = Image.Transpose.ROTATE_90 if flipped else Image.Transpose.ROTATE_270
+        if portrait:
+            self.width, self.height = native_width, native_height
+            self.rotation = Image.Transpose.ROTATE_180 if flipped else None
+        else:
+            self.width, self.height = native_height, native_width
+            self.rotation = Image.Transpose.ROTATE_90 if flipped else Image.Transpose.ROTATE_270
         self.clock = clock
         self.history: deque[tuple[int, bytes]] = deque(maxlen=8)  # (命令番号, 応答)。確認画面で見せる
 
@@ -211,7 +216,7 @@ class TurzxUsb:
     def show(self, image: Image.Image) -> None:
         if image.size != (self.width, self.height):
             raise ValueError(f"画像の大きさが合いません: {image.size}")
-        command, data = encode_image(image.transpose(self.rotation))
+        command, data = encode_image(image if self.rotation is None else image.transpose(self.rotation))
         self._exchange(command, struct.pack(">I", len(data)), data)
 
     def close(self) -> None:

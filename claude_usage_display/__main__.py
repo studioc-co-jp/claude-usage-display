@@ -50,7 +50,7 @@ def device_ids(device: str) -> str:
         device, DEVICE_IDS)
 
 
-def open_display(flipped: bool, device: str = "auto") -> TuringRevA | TurzxUsb:
+def open_display(flipped: bool, device: str = "auto", portrait: bool = False) -> TuringRevA | TurzxUsb:
     """つながっているディスプレイを開く。
 
     auto は TURZX の 5.2 インチを先に探し、無ければ 3.5 インチ（rev A）。2 台を別々のプログラムに使うときは、
@@ -63,8 +63,8 @@ def open_display(flipped: bool, device: str = "auto") -> TuringRevA | TurzxUsb:
             if device == "5.2":
                 raise
         else:
-            return TurzxUsb(transport, pid, flipped=flipped)
-    return TuringRevA(UsbTransport.open(), flipped=flipped)
+            return TurzxUsb(transport, pid, flipped=flipped, portrait=portrait)
+    return TuringRevA(UsbTransport.open(), flipped=flipped, portrait=portrait)
 
 
 def fit_to(image: Image.Image, size: tuple[int, int]) -> Image.Image:
@@ -175,7 +175,7 @@ def cmd_probe(args) -> int:
 
 
 def cmd_test_pattern(args) -> int:
-    display = open_display(args.flip, args.device)
+    display = open_display(args.flip, args.device, args.portrait)
     try:
         display.initialize(args.brightness)
         display.show(render_test_pattern((display.width, display.height)))
@@ -345,7 +345,7 @@ class MonitorRunner:
 
     def _connect(self) -> bool:
         try:
-            display = open_display(self.args.flip, self.args.device)
+            display = open_display(self.args.flip, self.args.device, self.args.portrait)
             display.initialize(self.args.brightness)
         except DeviceNotFound:
             if not self.waiting_logged:
@@ -389,7 +389,7 @@ class MonitorRunner:
                 self.stop.wait(DEVICE_RETRY_SECONDS)
                 continue
             assessment = self.fetch()
-            image = monitor_screen.render(self.status, assessment, self.config, self.error)
+            image = monitor_screen.render(self.status, assessment, self.config, self.error, portrait=self.args.portrait)
             frame = image.tobytes()
             if frame != self.last_frame:
                 try:
@@ -428,7 +428,7 @@ def cmd_monitor(args) -> int:
                 status, error = None, e.message
                 print(f"取得に失敗しました: {e.message}", file=sys.stderr)
         assessment = assess(status, config, now) if status else None
-        monitor_screen.render(status, assessment, config, error).save(args.preview)
+        monitor_screen.render(status, assessment, config, error, portrait=args.portrait).save(args.preview)
         print(args.preview)
         return 0
     runner = MonitorRunner(args, config)
@@ -475,6 +475,8 @@ def main(argv: list[str] | None = None) -> int:
             p.add_argument("--interval", type=int, default=120, help="取得の間隔（秒、既定: 120）")
             p.add_argument("--save-png", help="送った画像をこのパスにも保存する（確認用）")
             p.add_argument("--theme", choices=THEMES, default=DEFAULT_THEME, help=theme_help)
+        if name in ("test-pattern", "monitor"):
+            p.add_argument("--portrait", action="store_true", help="縦置き（320×480）で出す")
         if name == "monitor":
             p.add_argument("--config", default="monitor.toml", help="設定ファイル（既定: monitor.toml）")
             p.add_argument("--interval", type=int, default=60, help="取得の間隔（秒、既定: 60）")

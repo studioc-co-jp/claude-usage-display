@@ -91,6 +91,16 @@ class TuringRevATest(unittest.TestCase):
             self.display.show(Image.new("RGB", (320, 480)))
         self.assertEqual(self.transport.writes, [])
 
+    def test_portrait_uses_portrait_orientation_and_size(self):
+        display = TuringRevA(self.transport, portrait=True)
+        self.assertEqual((display.width, display.height), (320, 480))
+        display.initialize(brightness=30)
+        self.assertEqual(self.transport.writes[-2], encode_orientation(Orientation.PORTRAIT))
+        display.show(Image.new("RGB", (320, 480)))
+        self.assertIn(encode_command(Command.DISPLAY_BITMAP, 0, 0, 319, 479), self.transport.writes)
+        self.assertEqual(TuringRevA(FakeTransport(), flipped=True, portrait=True).orientation,
+                         Orientation.REVERSE_PORTRAIT)
+
     def test_flip_uses_reverse_landscape(self):
         TuringRevA(self.transport, flipped=True).initialize(brightness=30)
         self.assertEqual(self.transport.writes[-2][6], 103)

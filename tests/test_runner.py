@@ -206,7 +206,7 @@ class MonitorRunnerTest(unittest.TestCase):
         from tests.test_server_monitor import config, status
 
         cfg = config()
-        runner = cli.MonitorRunner(argparse.Namespace(flip=False, device="3.5", brightness=30, interval=0), cfg,
+        runner = cli.MonitorRunner(argparse.Namespace(flip=False, device="3.5", brightness=30, interval=0, portrait=False), cfg,
                                    reader=mock.Mock())
         statuses = [status(), status(values=(92, 61, 47, 3)), status()]
         runner.reader.fetch.side_effect = statuses
@@ -229,7 +229,7 @@ class MonitorRunnerTest(unittest.TestCase):
                 mock.patch.object(cli, "datetime", mock.Mock(wraps=datetime, now=lambda tz=None: now)), \
                 self.assertLogs(cli.log, "INFO") as logs:
             runner.loop()
-        opened.assert_called_once_with(False, "3.5")
+        opened.assert_called_once_with(False, "3.5", False)
         self.assertEqual(shown, [(0, 0, 0), cli.gauge.RED, (0, 0, 0)])
         messages = [r.getMessage() for r in logs.records]
         self.assertIn("アラート: CPU 92%（しきい値 80%）", messages)
