@@ -18,7 +18,7 @@ LANDSCAPE_HEADER = encode_command(Command.DISPLAY_BITMAP, 0, 0, 479, 319)
 
 
 def make_args(**overrides):
-    values = dict(model="Fable", brightness=30, flip=False, interval=120, save_png=None, theme="gauge")
+    values = dict(model="Fable", brightness=30, flip=False, interval=120, save_png=None, theme="gauge", device="auto")
     values.update(overrides)
     return argparse.Namespace(**values)
 
@@ -199,6 +199,41 @@ class TurzxRunnerTest(unittest.TestCase):
         self.assertEqual(sent.getpixel((360, 50)), (0, 0, 0))
         self.assertEqual(sent.getpixel((360, 1229)), (0, 0, 0))
         self.assertNotEqual(sent.getpixel((360, 640)), (0, 0, 0))
+
+
+class MonitorRunnerTest(unittest.TestCase):
+    def test_sends_changes_and_logs_alerts_and_recovery(self):
+        from tests.test_server_monitor import config, status
+
+        cfg = config()
+        runner = cli.MonitorRunner(argparse.Namespace(flip=False, device="3.5", brightness=30, interval=0), cfg,
+                                   reader=mock.Mock())
+        statuses = [status(), status(values=(92, 61, 47, 3)), status()]
+        runner.reader.fetch.side_effect = statuses
+        shown = []
+
+        class Display:
+            def initialize(self, brightness):
+                pass
+
+            def show(self, image):
+                shown.append(image.getpixel((2, 300)))
+                if len(shown) == len(statuses):
+                    runner.stop.set()
+
+            def close(self):
+                pass
+
+        now = statuses[0].fetched_at
+        with mock.patch.object(cli, "open_display", return_value=Display()) as opened, \
+                mock.patch.object(cli, "datetime", mock.Mock(wraps=datetime, now=lambda tz=None: now)), \
+                self.assertLogs(cli.log, "INFO") as logs:
+            runner.loop()
+        opened.assert_called_once_with(False, "3.5")
+        self.assertEqual(shown, [(0, 0, 0), cli.gauge.RED, (0, 0, 0)])
+        messages = [r.getMessage() for r in logs.records]
+        self.assertIn("アラート: CPU 92%（しきい値 80%）", messages)
+        self.assertIn("アラートが解消しました", messages)
 
 
 class FitToTest(unittest.TestCase):

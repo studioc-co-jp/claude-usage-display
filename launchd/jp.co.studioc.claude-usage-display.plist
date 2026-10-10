@@ -2,6 +2,7 @@
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <!--
   claude-usage-display を、ログインしたときに起動し、止まったら起動し直す。
+  利用枠の画面（run）とサーバーの状態の画面（monitor）で、このひな形を共用する（ラベルとコマンドを差し替える）。
 
   ひな形はリポジトリの launchd/ にある。~/Library/LaunchAgents/ の同名ファイルは、
   scripts/install-launch-agent.sh が @…@ の部分をこの Mac のパスに置き換えて作る
@@ -9,21 +10,22 @@
   配置したほうを直接編集しない。登録し直すと上書きされる。
 
   登録:  scripts/install-launch-agent.sh [run のオプション]
-  解除:  scripts/uninstall-launch-agent.sh
+         scripts/install-launch-agent.sh --monitor [monitor のオプション]（ラベルは末尾に .monitor）
+  解除:  scripts/uninstall-launch-agent.sh [--monitor]
   状態:  launchctl print gui/$(id -u)/jp.co.studioc.claude-usage-display
   ログ:  ~/Library/Logs/claude-usage-display.log
 -->
 <plist version="1.0">
 <dict>
   <key>Label</key>
-  <string>jp.co.studioc.claude-usage-display</string>
+  <string>@LABEL@</string>
 
   <key>ProgramArguments</key>
   <array>
     <string>@PYTHON@</string>
     <string>-m</string>
     <string>claude_usage_display</string>
-    <string>run</string>
+    <string>@COMMAND@</string>
     <!-- @RUN_OPTIONS@ -->
   </array>
 

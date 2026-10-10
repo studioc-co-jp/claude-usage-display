@@ -13,3 +13,6 @@ __pycache__/
 
 # README に載せる画面の画像（preview --demo の見本の値だけ。実際の利用枠は載せない）
 !docs/images/*.png
+
+# monitor コマンドの実際の設定（バケット名などを含むため git に入れない。見本は monitor.example.toml）
+monitor.toml

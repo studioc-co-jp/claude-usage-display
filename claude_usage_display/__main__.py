@@ -4,8 +4,10 @@
     python -m claude_usage_display probe                          ディスプレイの USB 情報を出す
     python -m claude_usage_display test-pattern                   向きと色の確認画面を出す
     python -m claude_usage_display run                            常駐して表示し続ける
+    python -m claude_usage_display monitor                        サーバーの状態を表示し続ける（monitor.toml）
 
 ディスプレイは、TURZX の 5.2 インチ（turzx_usb.py）を先に探し、無ければ 3.5 インチ（rev A、turing.py）を使う。
+2 台を別々のプログラムに使うときは --device 3.5 / --device 5.2 で指定する。
 """
 
 from __future__ import annotations
@@ -20,8 +22,10 @@ from datetime import datetime, timedelta, timezone
 
 from PIL import Image
 
-from . import gauge, render
+from . import gauge, monitor_screen, render
 from .render import render_test_pattern
+from .server_monitor import (AwsReader, ConfigError, FetchError, Incident, MetricValue, MonitorState, ServerStatus,
+                             assess, load_config)
 from .turing import PID, VID, DeviceNotFound, TuringRevA, UsbTransport, is_disconnected
 from .turzx_usb import MODELS as TURZX_MODELS
 from .turzx_usb import VID as TURZX_VID
@@ -37,13 +41,24 @@ DEFAULT_THEME = "gauge"
 SIZES = {"480x320": (480, 320), "1280x720": (1280, 720)}  # 3.5 インチと 5.2 インチ
 
 
-def open_display(flipped: bool) -> TuringRevA | TurzxUsb:
-    """つながっているディスプレイを開く。TURZX の 5.2 インチを先に探し、無ければ 3.5 インチ（rev A）。"""
-    try:
-        transport, pid = TurzxUsbTransport.open()
-    except DeviceNotFound:
-        return TuringRevA(UsbTransport.open(), flipped=flipped)
-    return TurzxUsb(transport, pid, flipped=flipped)
+DEVICES = ("auto", "3.5", "5.2")
+
+
+def open_display(flipped: bool, device: str = "auto") -> TuringRevA | TurzxUsb:
+    """つながっているディスプレイを開く。
+
+    auto は TURZX の 5.2 インチを先に探し、無ければ 3.5 インチ（rev A）。2 台を別々のプログラムに使うときは、
+    3.5 か 5.2 を指定する（auto のままだと、5.2 インチを外したときに、もう一方のプログラムの 3.5 インチを取りに行く）。
+    """
+    if device != "3.5":
+        try:
+            transport, pid = TurzxUsbTransport.open()
+        except DeviceNotFound:
+            if device == "5.2":
+                raise
+        else:
+            return TurzxUsb(transport, pid, flipped=flipped)
+    return TuringRevA(UsbTransport.open(), flipped=flipped)
 
 
 def fit_to(image: Image.Image, size: tuple[int, int]) -> Image.Image:
@@ -154,7 +169,7 @@ def cmd_probe(args) -> int:
 
 
 def cmd_test_pattern(args) -> int:
-    display = open_display(args.flip)
+    display = open_display(args.flip, args.device)
     try:
         display.initialize(args.brightness)
         display.show(render_test_pattern((display.width, display.height)))
@@ -196,7 +211,7 @@ class Runner:
 
     def _connect(self) -> bool:
         try:
-            display = open_display(self.args.flip)
+            display = open_display(self.args.flip, self.args.device)
         except DeviceNotFound:
             if not self.waiting_logged:
                 log.info("ディスプレイの接続を待っています（%s）", DEVICE_IDS)
@@ -289,6 +304,133 @@ class Runner:
         return 0
 
 
+def _demo_server_status(config, now: datetime, case: str) -> ServerStatus:
+    """monitor --demo の見本の値。normal は正常、alert は CPU とサイトの異常、jobs はジョブの障害。"""
+    values = {"normal": (23, 61, 47, 3), "alert": (92, 61, 47, 3), "jobs": (23, 61, 47, 3)}[case]
+    incidents = {
+        "normal": (),
+        "alert": (Incident("http", "top", "HTTP 503（期待 200）", now - timedelta(minutes=3)),),
+        "jobs": (Incident("job", "nightly-backup", "直近の実行が失敗", now - timedelta(hours=2)),
+                 Incident("job", "daily-report", "直近の実行が失敗", now - timedelta(days=5))),
+    }[case]
+    metrics = tuple(MetricValue(spec, value, now - timedelta(minutes=1)) for spec, value in zip(config.metrics, values))
+    return ServerStatus(metrics, MonitorState(incidents, now - timedelta(seconds=30)), now)
+
+
+class MonitorRunner:
+    """サーバーの状態を ``interval`` 秒ごとに取得し、変わったときだけ送る。"""
+
+    def __init__(self, args, config, reader=None):
+        self.args = args
+        self.config = config
+        self.reader = reader or AwsReader(config)
+        self.stop = threading.Event()
+        self.display: TuringRevA | TurzxUsb | None = None
+        self.status: ServerStatus | None = None
+        self.error: str | None = None
+        self.alerts: tuple[str, ...] = ()
+        self.warnings: tuple[str, ...] = ()
+        self.last_frame: bytes | None = None
+        self.waiting_logged = False
+
+    def request_stop(self, signum, _frame) -> None:
+        log.info("終了の合図を受けました（%s）", signal.Signals(signum).name)
+        self.stop.set()
+
+    def _connect(self) -> bool:
+        try:
+            display = open_display(self.args.flip, self.args.device)
+            display.initialize(self.args.brightness)
+        except DeviceNotFound:
+            if not self.waiting_logged:
+                log.info("ディスプレイの接続を待っています（%s）", self.args.device)
+                self.waiting_logged = True
+            return False
+        except Exception:  # noqa: BLE001
+            log.exception("ディスプレイを開けません")
+            return False
+        log.info("ディスプレイに接続しました")
+        self.display, self.last_frame, self.waiting_logged = display, None, False
+        return True
+
+    def fetch(self) -> None:
+        try:
+            self.status = self.reader.fetch()
+            if self.error:
+                log.info("取得が戻りました")
+            self.error = None
+        except FetchError as e:
+            if e.message != self.error:
+                log.warning("取得に失敗しました: %s", e.message)
+            self.error = e.message
+        assessment = assess(self.status, self.config, datetime.now(timezone.utc)) if self.status else None
+        alerts = assessment.alerts if assessment else ()
+        warnings = assessment.warnings if assessment else ()
+        if alerts != self.alerts:
+            if alerts:
+                log.warning("アラート: %s", " / ".join(alerts))
+            else:
+                log.info("アラートが解消しました")
+            self.alerts = alerts
+        if warnings != self.warnings:
+            log.info("見出しの注意: %s", " / ".join(warnings) or "なし")
+            self.warnings = warnings
+        return assessment
+
+    def loop(self) -> int:
+        while not self.stop.is_set():
+            if self.display is None and not self._connect():
+                self.stop.wait(DEVICE_RETRY_SECONDS)
+                continue
+            assessment = self.fetch()
+            image = monitor_screen.render(self.status, assessment, self.config, self.error)
+            frame = image.tobytes()
+            if frame != self.last_frame:
+                try:
+                    self.display.show(image)
+                    self.last_frame = frame
+                except Exception as e:  # noqa: BLE001
+                    if is_disconnected(e):
+                        log.warning("ディスプレイが外れました。接続を待ちます")
+                    else:
+                        log.exception("送信に失敗しました。接続し直します")
+                    Runner._close(self.display)
+                    self.display = None
+                    continue
+            self.stop.wait(self.args.interval)
+        if self.display is not None:
+            Runner._close(self.display)
+        log.info("終了しました")
+        return 0
+
+
+def cmd_monitor(args) -> int:
+    try:
+        config = load_config(args.config)
+    except ConfigError as e:
+        print(e, file=sys.stderr)
+        return 2
+    if args.preview:
+        now = datetime.now(timezone.utc)
+        error = None
+        if args.demo:
+            status = _demo_server_status(config, now, args.demo)
+        else:
+            try:
+                status = AwsReader(config).fetch(now)
+            except FetchError as e:
+                status, error = None, e.message
+                print(f"取得に失敗しました: {e.message}", file=sys.stderr)
+        assessment = assess(status, config, now) if status else None
+        monitor_screen.render(status, assessment, config, error).save(args.preview)
+        print(args.preview)
+        return 0
+    runner = MonitorRunner(args, config)
+    signal.signal(signal.SIGTERM, runner.request_stop)
+    signal.signal(signal.SIGINT, runner.request_stop)
+    return runner.loop()
+
+
 def cmd_run(args) -> int:
     runner = Runner(args)
     signal.signal(signal.SIGTERM, runner.request_stop)
@@ -315,19 +457,30 @@ def main(argv: list[str] | None = None) -> int:
     probe.set_defaults(func=cmd_probe)
 
     for name, func, help_text in (("test-pattern", cmd_test_pattern, "向きと色の確認画面を出す"),
-                                  ("run", cmd_run, "常駐して表示し続ける")):
+                                  ("run", cmd_run, "常駐して表示し続ける"),
+                                  ("monitor", cmd_monitor, "サーバーの状態を表示し続ける（monitor.toml）")):
         p = sub.add_parser(name, help=help_text)
         p.add_argument("--brightness", type=int, default=30, help="明るさ 0〜100（既定: 30）")
         p.add_argument("--flip", action="store_true", help="上下を反転する（ケーブルの向きに合わせる）")
+        p.add_argument("--device", choices=DEVICES, default="auto",
+                       help="使うディスプレイ（既定: auto は 5.2 インチを先に探す。2 台を使い分けるときは指定する）")
         p.set_defaults(func=func)
         if name == "run":
             p.add_argument("--interval", type=int, default=120, help="取得の間隔（秒、既定: 120）")
             p.add_argument("--save-png", help="送った画像をこのパスにも保存する（確認用）")
             p.add_argument("--theme", choices=THEMES, default=DEFAULT_THEME, help=theme_help)
+        if name == "monitor":
+            p.add_argument("--config", default="monitor.toml", help="設定ファイル（既定: monitor.toml）")
+            p.add_argument("--interval", type=int, default=60, help="取得の間隔（秒、既定: 60）")
+            p.add_argument("--preview", help="ディスプレイに送らず、画像をこのパスに保存して終わる")
+            p.add_argument("--demo", choices=("normal", "alert", "jobs"),
+                           help="--preview で、AWS を呼ばず見本の値で描く")
 
     args = parser.parse_args(argv)
     if getattr(args, "interval", 60) < 60:
         parser.error("--interval は 60 秒以上にしてください")
+    if getattr(args, "demo", None) and args.command == "monitor" and not args.preview:
+        parser.error("monitor の --demo は --preview と一緒に使ってください")
     # 範囲外の値は接続した時点で初めて失敗し、run が初期化を繰り返し続けるため、ここで止める
     if not 0 <= getattr(args, "brightness", 0) <= 100:
         parser.error("--brightness は 0〜100 にしてください")

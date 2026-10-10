@@ -1,8 +1,13 @@
 #!/bin/sh
 # 自動起動（launchd の LaunchAgent）を解除する。ログ（~/Library/Logs/claude-usage-display.log）は残す。
+#   scripts/uninstall-launch-agent.sh             利用枠の画面（run）
+#   scripts/uninstall-launch-agent.sh --monitor   サーバーの状態の画面（monitor）
 set -eu
 
 LABEL=jp.co.studioc.claude-usage-display
+if [ "${1:-}" = "--monitor" ]; then
+  LABEL=jp.co.studioc.claude-usage-display.monitor
+fi
 TARGET="$HOME/Library/LaunchAgents/$LABEL.plist"
 DOMAIN="gui/$(id -u)"
 

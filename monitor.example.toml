@@ -1,0 +1,46 @@
+# monitor コマンド（サーバーの状態の画面）の設定の見本。
+# monitor.toml に写して値を書き換える。monitor.toml は git に入れない（.gitignore）。
+title = "example.com"
+region = "ap-northeast-1"
+# Keychain の項目のサービス名。アカウント名 = アクセスキー ID、パスワード = シークレット。
+# 鍵は cloudwatch:GetMetricStatistics と、下の状態ファイルの s3:GetObject だけを持つ読み取り専用のもの
+keychain_service = "example-display-reader"
+
+# 外形・死活監視の状態ファイル（S3 の JSON）。使わないなら、この節を消す
+[state]
+bucket = "example-monitoring-bucket"
+key = "state/status.json"
+stale_seconds = 300          # これより長く更新されなければ「監視が止まっています」で赤にする
+red_kinds = ["http", "tls"]  # 障害のとき画面を赤にする監視の種類。ほかは見出しにオレンジで件数を出す
+
+# 監視の ID と、画面に出す名前（任意）
+[state.names]
+top = "トップ"
+login = "ログイン"
+
+# 4 つ書く（2×2 の左上・右上・左下・右下の順）。しきい値以上で画面を赤にする
+[[metrics]]
+label = "CPU"
+namespace = "CWAgent"
+name = "cpu_usage_active"
+dimensions = { cpu = "cpu-total" }
+threshold = 80
+
+[[metrics]]
+label = "メモリ"
+namespace = "CWAgent"
+name = "mem_used_percent"
+threshold = 85
+
+[[metrics]]
+label = "ディスク"
+namespace = "CWAgent"
+name = "disk_used_percent"
+dimensions = { path = "/", device = "nvme0n1p1", fstype = "ext4" }
+threshold = 90
+
+[[metrics]]
+label = "スワップ"
+namespace = "CWAgent"
+name = "swap_used_percent"
+threshold = 90
