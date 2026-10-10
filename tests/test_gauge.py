@@ -146,5 +146,87 @@ class LargeGaugeTest(unittest.TestCase):
                 self.assertEqual(gauge.render(*args, size=self.SIZE).size, self.SIZE)
 
 
+def gemini(*percents):
+    resets = (NOW + timedelta(hours=2), NOW + timedelta(days=3))
+    return Snapshot(tuple(Meter(label, p, r) for label, p, r in zip(("5時間", "週次"), percents, resets)), NOW)
+
+
+def near(pixel, color, tolerance=12):
+    return all(abs(a - b) <= tolerance for a, b in zip(pixel, color))
+
+
+class GeminiGaugeTest(unittest.TestCase):
+    """Gemini を足した画面（案 B）。上の段に Claude Code の 3 枚、下の段に Gemini の 2 枚。"""
+
+    SIZE = (1280, 720)
+    LAYOUT = gauge.Layout(*SIZE)
+
+    def lower_ring_top(self, index):
+        px = self.LAYOUT.px
+        width = (self.SIZE[0] - px(gauge.MARGIN) * 2 - px(gauge.CARD_GAP)) / 2
+        left = px(gauge.MARGIN) + index * (width + px(gauge.CARD_GAP))
+        cx = left + px(15) + px(gauge.LOWER_RING_RADIUS)
+        cy = (px(gauge.LOWER_CARD_TOP) + self.SIZE[1] - px(gauge.MARGIN)) / 2
+        return round(cx), round(cy - px(gauge.LOWER_RING_RADIUS) + px(gauge.LOWER_RING_WIDTH) / 2)
+
+    def test_sizes(self):
+        for size in ((1280, 720), (480, 320)):
+            with self.subTest(size=size):
+                self.assertEqual(gauge.render_with_gemini(snapshot(26, 74, 93), gemini(12, 38), NOW, size=size).size,
+                                 size)
+
+    def test_lower_rings_follow_severity(self):
+        image = gauge.render_with_gemini(snapshot(26, 74, 93), gemini(12, 92), NOW, size=self.SIZE)
+        for index, expected in enumerate((gauge.BLUE, gauge.RED)):
+            with self.subTest(index=index):
+                self.assertTrue(near(image.getpixel(self.lower_ring_top(index)), expected))
+
+    def test_upper_card_content_is_vertically_centered(self):
+        image = gauge.render_with_gemini(snapshot(26, 74, 93), gemini(12, 38), NOW, size=self.SIZE)
+        inset = math.ceil(self.LAYOUT.px(gauge.CARD_RADIUS))
+        bottom = round(self.LAYOUT.px(gauge.UPPER_CARD_BOTTOM))
+        for index in range(3):
+            left, top, right, _ = (round(v) for v in gauge.card_box(index, self.LAYOUT))
+            rows = ink_rows(image, left + inset, right - inset, top + 3, bottom - 3, gauge.CARD)
+            above, below = rows[0] - top, bottom - 1 - rows[-1]
+            with self.subTest(index=index):
+                self.assertLessEqual(abs(above - below), 6, (above, below))
+
+    def test_icons_are_drawn_left_of_titles_only_when_given(self):
+        green = Image.new("RGBA", (64, 64), (0, 200, 0, 255))
+        icons = {"claude": green, "gemini": green}
+        px = self.LAYOUT.px
+        spots = [(round(px(gauge.HEADER_INSET) + px(gauge.ICON_SIZE) / 2), round(gauge._badge(self.LAYOUT, b)[1]))
+                 for b in (gauge.HEADER_BASELINE, gauge.GEMINI_BASELINE)]
+        with_icons = gauge.render_with_gemini(snapshot(26, 74, 93), gemini(12, 38), NOW, size=self.SIZE, icons=icons)
+        without = gauge.render_with_gemini(snapshot(26, 74, 93), gemini(12, 38), NOW, size=self.SIZE)
+        for spot in spots:
+            with self.subTest(spot=spot):
+                self.assertTrue(near(with_icons.getpixel(spot), (0, 200, 0)))
+                self.assertFalse(near(without.getpixel(spot), (0, 200, 0)))
+        plain = gauge.render(snapshot(26, 74, 93), NOW, size=self.SIZE, icons={"claude": green})
+        self.assertTrue(near(plain.getpixel(spots[0]), (0, 200, 0)))
+
+    def test_gemini_failure_shows_the_orange_badge_in_its_own_header(self):
+        image = gauge.render_with_gemini(snapshot(26, 74, 93), None, NOW, gemini_status="Antigravity にログインしていません",
+                                         size=self.SIZE)
+        lower = gauge._badge(self.LAYOUT, gauge.GEMINI_BASELINE)
+        upper = gauge._badge(self.LAYOUT, gauge.HEADER_BASELINE)
+        self.assertTrue(near(image.getpixel((round(lower[0] - 8), round(lower[1]))), gauge.ORANGE))
+        self.assertFalse(near(image.getpixel((round(upper[0] - 8), round(upper[1]))), gauge.ORANGE))
+
+    def test_load_icons_trims_transparent_margins_and_skips_missing(self):
+        import tempfile
+        from pathlib import Path
+
+        with tempfile.TemporaryDirectory() as folder:
+            image = Image.new("RGBA", (100, 100), (0, 0, 0, 0))
+            image.paste((255, 0, 0, 255), (20, 30, 60, 90))
+            image.save(Path(folder) / "claude.png")
+            icons = gauge.load_icons(folder)
+        self.assertEqual(set(icons), {"claude"})
+        self.assertEqual(icons["claude"].size, (40, 60))
+
+
 if __name__ == "__main__":
     unittest.main()

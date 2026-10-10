@@ -10,6 +10,8 @@ Claude Code の利用枠 3 つ（**5 時間・週次・Fable 週次**）を、Ma
 - 取得に失敗したときは、前回の値を残したまま、上端の見出しの位置に理由をオレンジで、右にその値を取得した時刻（「16:50 時点」）を出します
 - まだ値が無いときは、ゲージを灰色にして「--」を出します
 
+5.2 インチでは、Google の Antigravity の Gemini の枠（5 時間・週）も下の段に出せます（「Gemini（Antigravity）の枠も出す」を参照）。
+
 最初に作った横棒の画面も `--theme classic` で使えます。
 
 ![横棒の画面（見本の値）](docs/images/classic.png)
@@ -134,6 +136,10 @@ python3 -m venv .venv
 | `--flip` | `test-pattern`・`run` | なし | 上下を反転する。ケーブルの向きに合わせて付ける |
 | `--interval 秒` | `run` | 120 | 利用枠を取得する間隔（60 以上） |
 | `--save-png パス` | `run` | なし | ディスプレイへ送った画像を、このパスにも保存する（確認用） |
+| `--gemini` | `preview`・`run` | なし | Antigravity の Gemini の枠も下の段に出す（ゲージ型だけ） |
+| `--gemini-interval 秒` | `run` | 900 | Gemini の枠を取得する間隔（300 以上） |
+| `--agy パス` | `preview`・`run` | 自動 | Antigravity の CLI（`agy`）の場所。既定は PATH と `/opt/homebrew/bin`・`/usr/local/bin` から探す |
+| `--icons フォルダ` | `preview`・`run` | なし | 見出しの左に出すアイコン（`claude.png`・`gemini.png`）を置いたフォルダ |
 
 モデル別の週次上限は、既定で Fable のものを出します。別のモデルの上限を出すときは、コマンドの前に `--model` を付けます（例: `.venv/bin/python -m claude_usage_display --model Opus run`）。その上限が無いプランでは、値の代わりに「--」（横棒の画面では「—」）が出ます。
 
@@ -162,6 +168,31 @@ scripts/uninstall-launch-agent.sh          # 解除
 launchctl print gui/$(id -u)/jp.co.studioc.claude-usage-display | grep -E "^$(printf '\t')(state|pid|last exit code) ="
 tail -f ~/Library/Logs/claude-usage-display.log
 ```
+
+## Gemini（Antigravity）の枠も出す
+
+`--gemini` を付けると、上の段に Claude Code の 3 枚、下の段に Antigravity の Gemini の枠（5 時間・週）の 2 枚を出します。
+
+![Gemini の枠を足した 5.2 インチの画面（見本の値）](docs/images/gauge-gemini-1280x720.png)
+
+```
+.venv/bin/python -m claude_usage_display preview --demo --gemini --size 1280x720 -o demo.png  # 見本の値で描く
+scripts/install-launch-agent.sh --device 5.2 --gemini            # 常駐に登録する
+```
+
+- Antigravity の CLI（`agy` 1.1.11 以上）を入れ、ログインしておきます。値は `agy -p /usage --output-format json` で読みます。`-p` は `agy` の、対話をせずに 1 回だけ実行するモードです。このプログラムは Google の API を直接呼ばず、Antigravity のログイン情報も読みません
+- `/usage` は、Gemini のモデルのグループと、Claude・GPT のモデルのグループのそれぞれに、5 時間と週の枠を返します。画面に出すのは Gemini のグループです
+- `agy` 1.1.11 より古い版は、`/usage` を命令ではなくプロンプトとして扱い、枠を使ってしまいます。版が古いときは取得しません。また、応答が会話として扱われた形（`num_turns` が 1 以上など）だったときは、起動し直すまで取得をやめます
+- `agy` は実行するたびに言語サーバーを起動するため、1 回に約 6 秒かかります。そのため、取得は既定で 15 分ごとにしています（`--gemini-interval`）
+- 実行するたびに、Antigravity のフォルダ（`~/.gemini/antigravity-cli/implicit/`）に 450 バイトほどのファイルが 1 つ増えます（agy 1.3.1 で確認）。15 分ごとなら 1 日に 96 個（約 43 KB）です
+- `agy` のログは `~/Library/Application Support/claude-usage-display/agy/agy.log` に出します（直近の 1 回分だけ残す）。`agy` の既定のログのフォルダには書きません
+- ディスプレイがつながっていないあいだは、`agy` も実行しません
+
+### アイコン
+
+`--icons フォルダ` を付けると、見出しの名前の左に、そのフォルダの `claude.png` と `gemini.png` を出します（無いほうは出しません）。
+
+**ロゴの画像はこのリポジトリに入れていません。**Anthropic の [Trademark Guidelines](https://www.anthropic.com/legal/trademark-guidelines)（2024-08-01 発効）は、ロゴなどの商標を、Anthropic が許可し事前に承認した資料でだけ使えるとし、色・比率などの改変も認めていません。Google の [商標の指針](https://partnermarketinghub.withgoogle.com/brands/google/trademarks-and-terms/trademark-guidelines-for-proper-usage/) も、Google が承認した素材だけを使うこと、製品のアイコンをまねないことを求めています。どちらにも、個人で使う場合の例外は書かれていません。アイコンを使うときは画像を自分で用意し、手元のディスプレイに出すだけにしてください。ロゴの写った画面の写真や画像を公開するときは、各社の指針に従ってください。README の画像は `--icons` を付けずに作っています。
 
 ## サーバーの状態の画面（monitor）
 

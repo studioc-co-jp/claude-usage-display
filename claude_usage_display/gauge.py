@@ -11,6 +11,10 @@ Apple のウィジェット（バッテリー）とアクティビティのリ�
   5.2 インチ（1280×720、約 282 ppi）は 2.25 倍で、文字は 3.5 インチより約 1.3 倍大きく見える
   （2.25 × 165 ÷ 282）。表示部の高さも 49 mm から 62 mm へ約 1.27 倍になるので、縦の配分は変わらない
 - 図形は拡大して描いてから縮め、縁を滑らかにする。文字は縮めるとかすれるため、縮めた後に等倍で書く
+- ``render_with_gemini`` は、Gemini（Antigravity）の枠を足した画面。上の段に Claude Code の 3 枚、下の段に
+  Gemini の 2 枚（横長のカードの左にリング）を置く（2026-10-11 にユーザーが見本の 2 案から選んだ「案 B」）
+- 見出しの左に、Claude と Gemini のアイコンを出せる（``load_icons``）。ロゴはリポジトリに入れず、
+  この Mac のフォルダから読む。Anthropic と Google の商標の指針は、ロゴの使用に承認を求めるため（README「アイコン」）
 """
 
 from __future__ import annotations
@@ -19,6 +23,8 @@ import math
 from dataclasses import dataclass
 from datetime import datetime, timedelta
 from functools import lru_cache
+
+from pathlib import Path
 
 from PIL import Image, ImageDraw, ImageFont
 
@@ -59,6 +65,19 @@ CARD_WIDTH = (WIDTH - MARGIN * 2 - CARD_GAP * 2) / 3
 RING_RADIUS = 50
 RING_WIDTH = 11
 STATUS_GAP = 12
+ICON_SIZE = 20  # 見出しのアイコンの一辺
+ICON_GAP = 6
+
+# Gemini を足した画面（render_with_gemini）の寸法。5.2 インチの見本（1280×720）の値を 2.25 で割ったもの
+UPPER_CARD_BOTTOM = 201        # 上の段（Claude Code）のカードの下端
+UPPER_RING_RADIUS = 41
+UPPER_RING_WIDTH = 10
+UPPER_NUMBER = 23              # リングの中の数字（TITLE1 の 0.82 倍）
+GEMINI_BASELINE = 226          # 下の段の見出し
+LOWER_CARD_TOP = 235.5
+LOWER_RING_RADIUS = 27.5
+LOWER_RING_WIDTH = 7
+LOWER_NUMBER = 17              # TITLE1 の 0.62 倍
 
 
 @dataclass(frozen=True)
@@ -166,9 +185,9 @@ class _Shapes:
     def circle(self, cx, cy, r, fill):
         self.draw.ellipse(self._box(cx - r, cy - r, cx + r, cy + r), fill=fill)
 
-    def ring(self, cx, cy, percent: float | None):
-        """12 時の位置から時計回りに伸びる、端の丸いリング。"""
-        radius, ring_width = self.layout.px(RING_RADIUS), self.layout.px(RING_WIDTH)
+    def ring(self, cx, cy, percent: float | None, radius: float = RING_RADIUS, ring_width: float = RING_WIDTH):
+        """12 時の位置から時計回りに伸びる、端の丸いリング。半径と太さは 3.5 インチでの寸法。"""
+        radius, ring_width = self.layout.px(radius), self.layout.px(ring_width)
         color = BLUE if percent is None else tint(percent)
         track = _mix(SECONDARY if percent is None else color, CARD, TRACK_MIX)
         box = self._box(cx - radius, cy - radius, cx + radius, cy + radius)
@@ -187,10 +206,11 @@ class _Shapes:
         return self.image.resize((self.layout.width, self.layout.height), Image.LANCZOS)
 
 
-def _value(draw: ImageDraw.ImageDraw, cx: float, baseline: float, percent: float | None, layout: Layout) -> None:
+def _value(draw: ImageDraw.ImageDraw, cx: float, baseline: float, percent: float | None, layout: Layout,
+           number_size: int = TITLE1, unit_size: int = SUBHEAD) -> None:
     """「26」を大きく、「%」を小さく灰色で、ベースラインをそろえて中央に書く。"""
     number = "--" if percent is None else f"{round(percent)}"
-    number_font, unit_font = rounded(layout.pt(TITLE1)), rounded(layout.pt(SUBHEAD))
+    number_font, unit_font = rounded(layout.pt(number_size)), rounded(layout.pt(unit_size))
     number_width = draw.textlength(number, font=number_font)
     unit_width = 0 if percent is None else draw.textlength("%", font=unit_font) + layout.px(1)
     left = cx - (number_width + unit_width) / 2
@@ -199,10 +219,65 @@ def _value(draw: ImageDraw.ImageDraw, cx: float, baseline: float, percent: float
         draw.text((left + number_width + layout.px(1), baseline), "%", font=unit_font, fill=SECONDARY, anchor="ls")
 
 
+def load_icons(directory: str | Path) -> dict[str, Image.Image]:
+    """``directory`` の ``claude.png`` と ``gemini.png`` を読む。無いものは飛ばす。周りの透明な余白は切り落とす。"""
+    icons = {}
+    for name in ("claude", "gemini"):
+        path = Path(directory) / f"{name}.png"
+        if path.is_file():
+            image = Image.open(path).convert("RGBA")
+            icons[name] = image.crop(image.getbbox() or (0, 0, *image.size))
+    return icons
+
+
+def _badge(layout: Layout, baseline: float) -> tuple[float, float]:
+    """取得に失敗したときに見出しの左に出す、オレンジの丸の中心。``baseline`` は 3.5 インチでの寸法。"""
+    return layout.px(HEADER_INSET) + layout.px(7), layout.px(baseline) - layout.px(5.5)
+
+
+def _header(image: Image.Image, draw: ImageDraw.ImageDraw, layout: Layout, baseline_units: float, title: str,
+            snapshot: Snapshot | None, status: str | None, icon: Image.Image | None = None) -> None:
+    """見出しの行。左に名前（取得に失敗したときは、オレンジの丸とその説明）、右に取得の時刻。
+
+    オレンジの丸は図形の下書きに描いておく（``_badge``）。
+    """
+    px, pt = layout.px, layout.pt
+    width = layout.width
+    inset, baseline = px(HEADER_INSET), px(baseline_units)
+    badge = _badge(layout, baseline_units)
+    small = font(pt(FOOTNOTE), SMALL_WEIGHT)
+    fetched = f"{snapshot.fetched_at.astimezone(JST):%H:%M}" if snapshot else ""
+    if status:
+        when = f"{fetched} 時点" if snapshot else ""
+        draw.text((width - inset, baseline), when, font=small, fill=LABEL, anchor="rs")
+        draw.text((badge[0], badge[1] + px(4.5)), "!", font=rounded(pt(CAPTION1), "Bold"), fill=BACKGROUND,
+                  anchor="ms")
+        message_left = inset + px(20)
+        reserved = small.getlength(when) + px(STATUS_GAP) if when else 0
+        draw.text((message_left, baseline), status,
+                  font=fit_font(status, width - inset - message_left - reserved, pt(FOOTNOTE), SMALL_WEIGHT),
+                  fill=ORANGE, anchor="ls")
+        return
+    left = inset
+    if icon is not None:
+        side = round(px(ICON_SIZE))
+        mark = icon.copy()
+        mark.thumbnail((side, side), Image.LANCZOS)
+        center_y = badge[1]  # 名前の字の高さの中ほど
+        image.paste(mark, (round(left + (side - mark.width) / 2), round(center_y - mark.height / 2)), mark)
+        left += side + px(ICON_GAP)
+    draw.text((left, baseline), title, font=font(pt(SUBHEAD), 6), fill=LABEL, anchor="ls")
+    if snapshot:
+        draw.text((width - inset, baseline), f"{fetched} 更新", font=small, fill=LABEL, anchor="rs")
+
+
 def render(snapshot: Snapshot | None, now: datetime, status: str | None = None,
            labels: tuple[str, ...] = ("5時間", "週次", "Fable週次"),
-           size: tuple[int, int] = (WIDTH, HEIGHT)) -> Image.Image:
-    """``status`` は取得に失敗したときの短い説明。前回の値を残したまま、見出しの位置に出す。"""
+           size: tuple[int, int] = (WIDTH, HEIGHT), icons: dict[str, Image.Image] | None = None) -> Image.Image:
+    """``status`` は取得に失敗したときの短い説明。前回の値を残したまま、見出しの位置に出す。
+
+    ``icons`` は ``load_icons`` の結果。``claude`` があれば見出しの名前の左に出す。
+    """
     layout = Layout(*size)
     px, pt = layout.px, layout.pt
     width = layout.width
@@ -219,30 +294,12 @@ def render(snapshot: Snapshot | None, now: datetime, status: str | None = None,
         percent = None if meter.percent is None else max(0.0, min(100.0, meter.percent))
         shapes.ring(cx, origin + ring_y, percent)
         centers.append((cx, origin))
-    badge = (px(HEADER_INSET) + px(7), px(HEADER_BASELINE) - px(5.5))
     if status:
-        shapes.circle(*badge, px(7), ORANGE)
+        shapes.circle(*_badge(layout, HEADER_BASELINE), px(7), ORANGE)
 
     image = shapes.finish()
     draw = ImageDraw.Draw(image)
-
-    inset, baseline = px(HEADER_INSET), px(HEADER_BASELINE)
-    small = font(pt(FOOTNOTE), SMALL_WEIGHT)
-    fetched = f"{snapshot.fetched_at.astimezone(JST):%H:%M}" if snapshot else ""
-    if status:
-        when = f"{fetched} 時点" if snapshot else ""
-        draw.text((width - inset, baseline), when, font=small, fill=LABEL, anchor="rs")
-        draw.text((badge[0], badge[1] + px(4.5)), "!", font=rounded(pt(CAPTION1), "Bold"), fill=BACKGROUND,
-                  anchor="ms")
-        message_left = inset + px(20)
-        reserved = small.getlength(when) + px(STATUS_GAP) if when else 0
-        draw.text((message_left, baseline), status,
-                  font=fit_font(status, width - inset - message_left - reserved, pt(FOOTNOTE), SMALL_WEIGHT),
-                  fill=ORANGE, anchor="ls")
-    else:
-        draw.text((inset, baseline), "Claude Code", font=font(pt(SUBHEAD), 6), fill=LABEL, anchor="ls")
-        if snapshot:
-            draw.text((width - inset, baseline), f"{fetched} 更新", font=small, fill=LABEL, anchor="rs")
+    _header(image, draw, layout, HEADER_BASELINE, "Claude Code", snapshot, status, (icons or {}).get("claude"))
 
     inner = layout.card_width - px(CARD_PADDING) * 2
     for (cx, origin), meter in zip(centers, meters):
@@ -255,4 +312,94 @@ def render(snapshot: Snapshot | None, now: datetime, status: str | None = None,
         draw.text((cx, origin + when_y), when, font=fit_font(when, inner, pt(SUBHEAD), 6), fill=LABEL, anchor="ms")
         draw.text((cx, origin + remain_y), remain, font=fit_font(remain, inner, pt(FOOTNOTE), SMALL_WEIGHT),
                   fill=LABEL, anchor="ms")
+    return image
+
+
+def _upper_rows(layout: Layout) -> tuple[float, float, float, float, float]:
+    """上の段のカードの中身の各行の位置（中身の上端から測る）と、中身の高さ。"""
+    px = layout.px
+    ascent = -font(layout.pt(SUBHEAD), 6).getbbox("時", anchor="ls")[1]
+    descent = font(layout.pt(FOOTNOTE), SMALL_WEIGHT).getbbox("あと", anchor="ls")[3]
+    label = ascent
+    ring_center = label + px(10) + px(UPPER_RING_RADIUS)
+    when = ring_center + px(UPPER_RING_RADIUS) + px(25)
+    remain = when + px(18.5)
+    return label, ring_center, when, remain, remain + descent
+
+
+def _reset_text(when: str) -> str:
+    return f"リセット {when}"
+
+
+def render_with_gemini(snapshot: Snapshot | None, gemini: Snapshot | None, now: datetime,
+                       status: str | None = None, gemini_status: str | None = None,
+                       labels: tuple[str, ...] = ("5時間", "週次", "Fable週次"),
+                       gemini_labels: tuple[str, ...] = ("5時間", "週次"),
+                       size: tuple[int, int] = (WIDTH, HEIGHT),
+                       icons: dict[str, Image.Image] | None = None) -> Image.Image:
+    """上の段に Claude Code の 3 枚、下の段に Gemini（Antigravity）の 2 枚を出す。
+
+    ``gemini_status`` は Gemini の取得に失敗したときの短い説明で、下の段の見出しに出す。
+    """
+    layout = Layout(*size)
+    px, pt = layout.px, layout.pt
+    icons = icons or {}
+    meters = snapshot.meters[:3] if snapshot else tuple(Meter(label, None, None) for label in labels)
+    gemini_meters = gemini.meters[:2] if gemini else tuple(Meter(label, None, None) for label in gemini_labels)
+    label_y, ring_y, when_y, remain_y, content_height = _upper_rows(layout)
+
+    shapes = _Shapes(layout)
+    upper = []
+    for index, meter in enumerate(meters):
+        left, top, right, _bottom = card_box(index, layout)
+        bottom = px(UPPER_CARD_BOTTOM)
+        shapes.rounded_rectangle((left, top, right, bottom), px(CARD_RADIUS), CARD)
+        origin = top + (bottom - top - content_height) / 2
+        cx = (left + right) / 2
+        percent = None if meter.percent is None else max(0.0, min(100.0, meter.percent))
+        shapes.ring(cx, origin + ring_y, percent, UPPER_RING_RADIUS, UPPER_RING_WIDTH)
+        upper.append((cx, origin))
+    lower = []
+    lower_width = (layout.width - px(MARGIN) * 2 - px(CARD_GAP)) / 2
+    for index, meter in enumerate(gemini_meters):
+        left = px(MARGIN) + index * (lower_width + px(CARD_GAP))
+        top, bottom = px(LOWER_CARD_TOP), layout.height - px(MARGIN)
+        shapes.rounded_rectangle((left, top, left + lower_width, bottom), px(CARD_RADIUS), CARD)
+        cx, cy = left + px(15) + px(LOWER_RING_RADIUS), (top + bottom) / 2
+        percent = None if meter.percent is None else max(0.0, min(100.0, meter.percent))
+        shapes.ring(cx, cy, percent, LOWER_RING_RADIUS, LOWER_RING_WIDTH)
+        lower.append((left, cx, cy))
+    for baseline, failed in ((HEADER_BASELINE, status), (GEMINI_BASELINE, gemini_status)):
+        if failed:
+            shapes.circle(*_badge(layout, baseline), px(7), ORANGE)
+
+    image = shapes.finish()
+    draw = ImageDraw.Draw(image)
+    _header(image, draw, layout, HEADER_BASELINE, "Claude Code", snapshot, status, icons.get("claude"))
+    _header(image, draw, layout, GEMINI_BASELINE, "Gemini", gemini, gemini_status, icons.get("gemini"))
+
+    inner = layout.card_width - px(CARD_PADDING) * 2
+    for (cx, origin), meter in zip(upper, meters):
+        draw.text((cx, origin + label_y), meter.label, font=fit_font(meter.label, inner, pt(SUBHEAD), 6),
+                  fill=LABEL, anchor="ms")
+        percent = None if meter.percent is None else max(0.0, meter.percent)
+        _value(draw, cx, origin + ring_y + px(UPPER_NUMBER * 0.36), percent, layout, UPPER_NUMBER, CAPTION1)
+        when, remain = reset_lines(meter.resets_at, now)
+        text = _reset_text(when)
+        draw.text((cx, origin + when_y), text, font=fit_font(text, inner, pt(SUBHEAD), 6), fill=LABEL, anchor="ms")
+        draw.text((cx, origin + remain_y), remain, font=fit_font(remain, inner, pt(FOOTNOTE), SMALL_WEIGHT),
+                  fill=LABEL, anchor="ms")
+    for (left, cx, cy), meter in zip(lower, gemini_meters):
+        percent = None if meter.percent is None else max(0.0, meter.percent)
+        _value(draw, cx, cy + px(LOWER_NUMBER * 0.36), percent, layout, LOWER_NUMBER, 9)
+        text_left = cx + px(LOWER_RING_RADIUS) + px(18)
+        width = left + lower_width - px(CARD_PADDING) - text_left
+        when, remain = reset_lines(meter.resets_at, now)
+        text = _reset_text(when)
+        draw.text((text_left, cy - px(15)), meter.label, font=fit_font(meter.label, width, pt(SUBHEAD), 6),
+                  fill=LABEL, anchor="ls")
+        draw.text((text_left, cy + px(8)), text, font=fit_font(text, width, pt(SUBHEAD), 6), fill=LABEL,
+                  anchor="ls")
+        draw.text((text_left, cy + px(27.5)), remain, font=fit_font(remain, width, pt(FOOTNOTE), SMALL_WEIGHT),
+                  fill=LABEL, anchor="ls")
     return image

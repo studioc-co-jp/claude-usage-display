@@ -141,6 +141,36 @@ class RunnerTest(unittest.TestCase):
             runner.loop()
         self.assertEqual(draw.call_args.args[3], ("5時間", "週次", "Opus週次"))
 
+    def test_gemini_has_its_own_interval_and_stops_for_good_on_permanent_errors(self):
+        runner = cli.Runner(make_args(gemini=True, gemini_interval=900))
+        runner.gemini_reader = reader = mock.Mock()
+        reader.fetch.side_effect = [snapshot(), cli.AntigravityError("Antigravity にログインしていません"),
+                                    cli.AntigravityError("agy が /usage を命令として扱いませんでした", permanent=True)]
+        with mock.patch.object(cli.time, "monotonic", side_effect=[0.0, 10.0, 500.0, 1000.0, 1010.0, 2000.0, 99999.0]), \
+                self.assertLogs(cli.log, "WARNING") as logs:
+            for _ in range(5):
+                runner._fetch_gemini_if_due()
+        self.assertEqual(reader.fetch.call_count, 3)
+        self.assertEqual([r.getMessage() for r in logs.records], [
+            "Gemini の取得に失敗しました: Antigravity にログインしていません",
+            "Gemini の取得に失敗しました: agy が /usage を命令として扱いませんでした",
+            "Gemini の取得をやめます（起動し直すまで）",
+        ])
+        self.assertEqual(runner.next_gemini, float("inf"))
+        self.assertIsNotNone(runner.gemini)  # 前に取れた値は残す
+
+    def test_gemini_screen_is_drawn_when_enabled(self):
+        runner = cli.Runner(make_args(gemini=True, gemini_interval=900))
+        runner.gemini_reader = mock.Mock(**{"fetch.return_value": snapshot()})
+        transport = StopAfterFrames(runner)
+        draw = mock.Mock(wraps=cli.gauge.render_with_gemini)
+        with mock.patch.object(cli.UsbTransport, "open", return_value=transport), \
+                mock.patch.object(cli, "fetch_snapshot", return_value=snapshot()), \
+                mock.patch.object(cli.gauge, "render_with_gemini", draw):
+            runner.loop()
+        self.assertEqual(draw.call_args.kwargs["size"], (480, 320))
+        self.assertEqual(draw.call_args.args[6], ("5時間", "週次"))
+
     def test_unplugging_is_logged_in_one_line_and_waits_again(self):
         import usb.core
 
@@ -257,7 +287,8 @@ class ArgumentsTest(unittest.TestCase):
     def test_rejects_out_of_range_options_before_starting(self):
         for argv in (["run", "--brightness", "101"], ["run", "--brightness", "-1"],
                      ["test-pattern", "--brightness", "101"], ["run", "--interval", "59"],
-                     ["run", "--theme", "unknown"]):
+                     ["run", "--theme", "unknown"], ["run", "--gemini-interval", "299"],
+                     ["run", "--gemini", "--theme", "classic"], ["preview", "--gemini", "--theme", "classic"]):
             with self.subTest(argv=argv), mock.patch.object(cli, "cmd_run") as run, \
                     mock.patch.object(cli, "cmd_test_pattern") as test_pattern, mock.patch("sys.stderr"):
                 with self.assertRaises(SystemExit) as raised:

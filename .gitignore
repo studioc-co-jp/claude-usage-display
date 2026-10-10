@@ -16,3 +16,6 @@ __pycache__/
 
 # monitor コマンドの実際の設定（バケット名などを含むため git に入れない。見本は monitor.example.toml）
 monitor.toml
+
+# 見出しのアイコン（Claude・Gemini のロゴ。商標のため git に入れない。README「アイコン」）
+icons/

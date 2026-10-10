@@ -8,12 +8,16 @@
 
 ディスプレイは、TURZX の 5.2 インチ（turzx_usb.py）を先に探し、無ければ 3.5 インチ（rev A、turing.py）を使う。
 2 台を別々のプログラムに使うときは --device 3.5 / --device 5.2 で指定する。
+
+run と preview に --gemini を付けると、Antigravity の Gemini の枠（antigravity.py）も下の段に出す。
+--icons で、見出しに出すアイコン（claude.png・gemini.png）のフォルダを指定する（ロゴはリポジトリに入れない）。
 """
 
 from __future__ import annotations
 
 import argparse
 import logging
+import math
 import signal
 import sys
 import threading
@@ -23,6 +27,8 @@ from datetime import datetime, timedelta, timezone
 from PIL import Image
 
 from . import gauge, monitor_screen, render
+from .antigravity import LABELS as GEMINI_LABELS
+from .antigravity import AntigravityError, AntigravityReader
 from .render import render_test_pattern
 from .server_monitor import (AwsReader, ConfigError, FetchError, Incident, MetricValue, MonitorState, ServerStatus,
                              assess, load_config)
@@ -98,18 +104,41 @@ def _demo_snapshot(now: datetime, model: str) -> Snapshot:
     ), now)
 
 
+def _demo_gemini(now: datetime) -> Snapshot:
+    return Snapshot((
+        Meter("5時間", 12, now + timedelta(hours=2, minutes=5)),
+        Meter("週次", 38, now + timedelta(days=3, hours=3)),
+    ), now - timedelta(minutes=4))
+
+
 def cmd_preview(args) -> int:
     now = datetime.now(timezone.utc)
-    draw = THEMES[args.theme]
     size = SIZES[args.size]
+    labels = meter_labels(args.model)
+    snapshot = status = gemini = gemini_status = None
     if args.demo:
-        image = draw(_demo_snapshot(now, args.model), now, size=size)
+        snapshot = _demo_snapshot(now, args.model)
     else:
         try:
-            image = draw(fetch_snapshot(args.model), now, size=size)
+            snapshot = fetch_snapshot(args.model)
         except UsageError as e:
-            image = draw(None, now, e.message, meter_labels(args.model), size=size)
+            status = e.message
             print(f"取得に失敗しました: {e.message}", file=sys.stderr)
+    if args.gemini:
+        if args.demo:
+            gemini = _demo_gemini(now)
+        else:
+            try:
+                gemini = AntigravityReader(args.agy).fetch(now)
+            except AntigravityError as e:
+                gemini_status = e.message
+                print(f"Gemini の取得に失敗しました: {e.message}", file=sys.stderr)
+    icons = gauge.load_icons(args.icons) if args.icons else {}
+    if args.gemini:
+        image = gauge.render_with_gemini(snapshot, gemini, now, status, gemini_status, labels, GEMINI_LABELS,
+                                         size=size, icons=icons)
+    else:
+        image = THEMES[args.theme](snapshot, now, status, labels, size=size, **({"icons": icons} if icons else {}))
     image.save(args.output)
     print(args.output)
     return 0
@@ -209,6 +238,12 @@ class Runner:
         self.last_frame: bytes | None = None
         self.waiting_logged = False
         self.open_error: str | None = None
+        self.icons = gauge.load_icons(args.icons) if getattr(args, "icons", None) else {}
+        # Gemini（Antigravity）の枠。agy の実行に約 6 秒かかるので、Claude とは別の長い間隔で取る
+        self.gemini_reader = AntigravityReader(getattr(args, "agy", None)) if getattr(args, "gemini", False) else None
+        self.gemini: Snapshot | None = None
+        self.gemini_status: str | None = None
+        self.next_gemini = 0.0
 
     def request_stop(self, signum, _frame) -> None:
         # 送信中に止めるとパネルの同期が崩れるため、ここでは合図だけ立てる
@@ -273,10 +308,37 @@ class Runner:
             self.status = e.message
             self.next_fetch = now + wait
 
+    def _fetch_gemini_if_due(self) -> None:
+        if self.gemini_reader is None or time.monotonic() < self.next_gemini:
+            return
+        try:
+            self.gemini = self.gemini_reader.fetch()
+            if self.gemini_status:
+                log.info("Gemini の取得が戻りました")
+            self.gemini_status = None
+        except AntigravityError as e:
+            if e.message != self.gemini_status:
+                log.warning("Gemini の取得に失敗しました: %s", e.message)
+            self.gemini_status = e.message
+            if e.permanent:
+                log.warning("Gemini の取得をやめます（起動し直すまで）")
+                self.next_gemini = math.inf
+                return
+        self.next_gemini = time.monotonic() + self.args.gemini_interval
+
+    def _draw(self, size: tuple[int, int]) -> Image.Image:
+        now = datetime.now(timezone.utc)
+        labels = meter_labels(self.args.model)
+        if self.gemini_reader is not None:
+            return gauge.render_with_gemini(self.snapshot, self.gemini, now, self.status, self.gemini_status, labels,
+                                            GEMINI_LABELS, size=size, icons=self.icons)
+        extra = {"icons": self.icons} if self.icons else {}
+        return THEMES[self.args.theme](self.snapshot, now, self.status, labels, size=size, **extra)
+
     def _seconds_to_wait(self) -> float:
         now = datetime.now()
         to_next_minute = 60 - now.second - now.microsecond / 1_000_000 + 0.5
-        to_next_fetch = self.next_fetch - time.monotonic()
+        to_next_fetch = min(self.next_fetch, self.next_gemini if self.gemini_reader else math.inf) - time.monotonic()
         return max(1.0, min(to_next_minute, to_next_fetch))
 
     def loop(self) -> int:
@@ -285,9 +347,8 @@ class Runner:
                 self.stop.wait(DEVICE_RETRY_SECONDS)
                 continue
             self._fetch_if_due()
-            image = THEMES[self.args.theme](self.snapshot, datetime.now(timezone.utc), self.status,
-                                            meter_labels(self.args.model),
-                                            size=(self.display.width, self.display.height))
+            self._fetch_gemini_if_due()
+            image = self._draw((self.display.width, self.display.height))
             frame = image.tobytes()
             if frame != self.last_frame:
                 try:
@@ -461,6 +522,14 @@ def main(argv: list[str] | None = None) -> int:
     theme_help = f"画面のデザイン（既定: {DEFAULT_THEME}。classic は横棒の画面）"
     preview.add_argument("--theme", choices=THEMES, default=DEFAULT_THEME, help=theme_help)
 
+    def add_gemini_options(p) -> None:
+        p.add_argument("--gemini", action="store_true",
+                       help="Antigravity の Gemini の枠も出す（下の段。ゲージ型の画面だけ）")
+        p.add_argument("--agy", help="agy（Antigravity の CLI）のパス（既定: PATH と /opt/homebrew/bin などから探す）")
+        p.add_argument("--icons", help="見出しに出すアイコン（claude.png・gemini.png）のフォルダ")
+
+    add_gemini_options(preview)
+
     probe = sub.add_parser("probe", help="ディスプレイの USB 情報を出す")
     probe.set_defaults(func=cmd_probe)
 
@@ -477,6 +546,9 @@ def main(argv: list[str] | None = None) -> int:
             p.add_argument("--interval", type=int, default=120, help="取得の間隔（秒、既定: 120）")
             p.add_argument("--save-png", help="送った画像をこのパスにも保存する（確認用）")
             p.add_argument("--theme", choices=THEMES, default=DEFAULT_THEME, help=theme_help)
+            add_gemini_options(p)
+            p.add_argument("--gemini-interval", type=int, default=900,
+                           help="Gemini の取得の間隔（秒、既定: 900。agy の実行に約 6 秒かかるため長めにする）")
         if name in ("test-pattern", "monitor"):
             p.add_argument("--portrait", action="store_true", help="縦置き（320×480）で出す")
         if name == "monitor":
@@ -489,6 +561,10 @@ def main(argv: list[str] | None = None) -> int:
     args = parser.parse_args(argv)
     if getattr(args, "interval", 60) < 60:
         parser.error("--interval は 60 秒以上にしてください")
+    if getattr(args, "gemini_interval", 300) < 300:
+        parser.error("--gemini-interval は 300 秒以上にしてください")
+    if getattr(args, "gemini", False) and args.theme != "gauge":
+        parser.error("--gemini はゲージ型の画面（--theme gauge）で使ってください")
     if getattr(args, "demo", None) and args.command == "monitor" and not args.preview:
         parser.error("monitor の --demo は --preview と一緒に使ってください")
     # 範囲外の値は接続した時点で初めて失敗し、run が初期化を繰り返し続けるため、ここで止める
