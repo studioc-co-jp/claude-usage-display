@@ -40,6 +40,7 @@ class _Layout:
     status_size: int                             # 監視の状態の文言の大きさ
     alert_size: int                              # 帯の中のアラートの大きさ
     dot_radius: float                            # 監視の状態の点の半径
+    stamp_size: int                              # 右上の取得の時刻の大きさ
     # アラートが 2 件以上のとき、帯を 2 行にする場合の帯と各行の位置（None なら 1 行に「ほか N 件」まで詰める）
     tall_pill: tuple[int, int, int, int] | None
     tall_baselines: tuple[float, float] | None
@@ -53,7 +54,7 @@ class _Layout:
 
 LANDSCAPE = _Layout(
     size=(480, 320), inset=20, title_baseline=25, pill=(116, 6, 364, 32), status_baseline=25, dot_y=20,
-    status_size=13, alert_size=15, dot_radius=4.5, tall_pill=None, tall_baselines=None,
+    status_size=13, alert_size=15, dot_radius=4.5, stamp_size=13, tall_pill=None, tall_baselines=None,
     cells=((20, 44), (250, 44), (20, 182), (250, 182)), ring=(52, 68, 48, 11), label=(118, 50, "ls", 15),
     number=(118, 98, 40, 18, False), threshold=(118, 120, "ls", 12), dividers=((240, 56, 240, 304), (20, 182, 460, 182)))
 PORTRAIT = _Layout(
@@ -61,6 +62,7 @@ PORTRAIT = _Layout(
     # 監視の状態は、実機を見たユーザーの指示で大きくした（2026-10-11。文言 13→18、帯の中 15→18）。
     # 1 行に「ほか N 件」まで詰めると 12 ピクセルまで縮むので、アラートが 2 件以上なら帯を 2 行にする
     status_size=18, alert_size=18, dot_radius=6, tall_pill=(16, 35, 304, 87), tall_baselines=(57, 79),
+    stamp_size=16,  # 右上の時刻も、実機を見たユーザーの指示で大きくした（2026-10-11。13→16）
     # 名前・しきい値・リングは、実機を見たユーザーの指示で大きくした（2026-10-11。名前 15→18、しきい値 12→14、
     # リングの半径 46→56・太さ 10→12、数字 30→34）
     cells=((0, 80), (160, 80), (0, 280), (160, 280)), ring=(80, 100, 56, 12), label=(80, 28, "ms", 18),
@@ -159,8 +161,8 @@ def render(status: ServerStatus | None, assessment: Assessment | None, config: M
     draw.text((layout.inset, layout.title_baseline), config.title, font=font(15, 6), fill=ink, anchor="ls")
     if status:
         stamp = f"{status.fetched_at.astimezone(JST):%H:%M} " + ("時点" if fetch_error else "更新")
-        draw.text((width - layout.inset, layout.title_baseline), stamp, font=font(13, SMALL_WEIGHT), fill=ink,
-                  anchor="rs")
+        draw.text((width - layout.inset, layout.title_baseline), stamp, font=font(layout.stamp_size, SMALL_WEIGHT),
+                  fill=ink, anchor="rs")
     if two_lines:
         first, second = layout.tall_baselines
         text = assessment.alerts[0]
