@@ -36,6 +36,13 @@ class ParseTest(unittest.TestCase):
         self.assertEqual(snapshot.meters[0].resets_at, datetime(2026, 10, 10, 18, 37, tzinfo=timezone.utc))
         self.assertEqual(snapshot.fetched_at, NOW)
 
+    def test_unused_window_has_no_reset_time(self):
+        groups = [{"name": "Gemini Models", "buckets": [
+            {"window": "5h", "remaining_fraction": 1, "reset_time": "2026-10-11T07:00:00Z"},
+            {"window": "weekly", "remaining_fraction": 0.92, "reset_time": "2026-10-14T07:31:00Z"}]}]
+        meters = ag.parse_usage(usage_line(groups=groups), "", NOW).meters
+        self.assertEqual([(round(m.percent), m.resets_at is None) for m in meters], [(0, True), (8, False)])
+
     def test_a_prompt_instead_of_a_command_stops_for_good(self):
         for extra in ({"num_turns": 1}, {"conversation_id": "abc"}):
             with self.subTest(extra=extra), self.assertRaises(ag.AntigravityError) as caught:

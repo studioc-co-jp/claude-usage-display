@@ -15,6 +15,9 @@ Google の内部 API を自分で呼ばず、``agy`` に聞く。``agy`` は自�
 - ログは ``--log-file`` で自前のファイルに向ける。付けないと、1 回 21 KB のログが agy のログのフォルダに増え、
   最新のログを指す ``cli.log`` の向きも変わる（Orca などで動いている agy のログを追いにくくなる）
 - agy は実行したフォルダを作業場所として扱うので、専用の空のフォルダで実行する
+- 使っていない枠（``remaining_fraction`` が 1）の ``reset_time`` は「取得した時刻＋枠の長さ」で、取得のたびに
+  先へずれる（2026-10-13 に確かめた。5 時間の枠はちょうど 5 時間後、週の枠はちょうど 7 日後）。
+  意味の無い時刻なので、リセット時刻は無し（画面は「--」）として扱う
 """
 
 from __future__ import annotations
@@ -138,7 +141,8 @@ def parse_usage(stdout: str, stderr: str, now: datetime) -> Snapshot:
                     meters.append(Meter(label, None, None))
                     continue
                 percent = min(100.0, max(0.0, (1 - fraction) * 100))
-                meters.append(Meter(label, percent, _parse_time(bucket.get("reset_time"))))
+                resets_at = None if fraction >= 1 else _parse_time(bucket.get("reset_time"))  # 使っていない枠
+                meters.append(Meter(label, percent, resets_at))
             if all(m.percent is None for m in meters):
                 raise AntigravityError("Gemini の枠が応答にありません")
             return Snapshot(tuple(meters), now)

@@ -80,6 +80,8 @@ LOWER_CARD_TOP = 235.5
 LOWER_RING_RADIUS = 27.5
 LOWER_RING_WIDTH = 7
 LOWER_NUMBER = 17              # TITLE1 の 0.62 倍
+# 見出しの時刻。3.5 インチのサーバー監視の画面（縦置き）の名前 15・時刻 16 と同じ比にする（2026-10-13 ユーザーの指示）
+GEMINI_STAMP = 16
 
 
 @dataclass(frozen=True)
@@ -238,16 +240,17 @@ def _badge(layout: Layout, baseline: float) -> tuple[float, float]:
 
 
 def _header(image: Image.Image, draw: ImageDraw.ImageDraw, layout: Layout, baseline_units: float, title: str,
-            snapshot: Snapshot | None, status: str | None, icon: Image.Image | None = None) -> None:
+            snapshot: Snapshot | None, status: str | None, icon: Image.Image | None = None,
+            stamp_size: int = FOOTNOTE) -> None:
     """見出しの行。左に名前（取得に失敗したときは、オレンジの丸とその説明）、右に取得の時刻。
 
-    オレンジの丸は図形の下書きに描いておく（``_badge``）。
+    オレンジの丸は図形の下書きに描いておく（``_badge``）。``stamp_size`` は右の時刻の大きさ（3.5 インチでの pt）。
     """
     px, pt = layout.px, layout.pt
     width = layout.width
     inset, baseline = px(HEADER_INSET), px(baseline_units)
     badge = _badge(layout, baseline_units)
-    small = font(pt(FOOTNOTE), SMALL_WEIGHT)
+    small = font(pt(stamp_size), SMALL_WEIGHT)
     fetched = f"{snapshot.fetched_at.astimezone(JST):%H:%M}" if snapshot else ""
     if status:
         when = f"{fetched} 時点" if snapshot else ""
@@ -377,8 +380,9 @@ def render_with_gemini(snapshot: Snapshot | None, gemini: Snapshot | None, now: 
 
     image = shapes.finish()
     draw = ImageDraw.Draw(image)
-    _header(image, draw, layout, HEADER_BASELINE, "Claude Code", snapshot, status, icons.get("claude"))
-    _header(image, draw, layout, GEMINI_BASELINE, "Antigravity", gemini, gemini_status, icons.get("gemini"))
+    _header(image, draw, layout, HEADER_BASELINE, "Claude Code", snapshot, status, icons.get("claude"), GEMINI_STAMP)
+    _header(image, draw, layout, GEMINI_BASELINE, "Antigravity", gemini, gemini_status, icons.get("gemini"),
+            GEMINI_STAMP)
 
     inner = layout.card_width - px(CARD_PADDING) * 2
     for (cx, origin), meter in zip(upper, meters):
