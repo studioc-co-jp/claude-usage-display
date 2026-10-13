@@ -96,7 +96,7 @@ class LargeGaugeTest(unittest.TestCase):
     """5.2 インチ（1280×720）。寸法と文字を 2.25 倍にし、増えた横幅をカードに回す。"""
 
     SIZE = (1280, 720)
-    LAYOUT = gauge.Layout(*SIZE)
+    LAYOUT = gauge.layout_for(SIZE)
 
     def test_size_and_scale(self):
         self.assertEqual(gauge.render(snapshot(26, 74, 93), NOW, size=self.SIZE).size, self.SIZE)
@@ -109,13 +109,22 @@ class LargeGaugeTest(unittest.TestCase):
     def test_ring_color_follows_severity(self):
         image = gauge.render(snapshot(26, 74, 93), NOW, size=self.SIZE)
         _label, ring_y, *_rest, content_height = gauge.content_rows(self.LAYOUT)
-        radius, width = self.LAYOUT.px(gauge.RING_RADIUS), self.LAYOUT.px(gauge.RING_WIDTH)
+        radius, width = self.LAYOUT.cpx(gauge.RING_RADIUS), self.LAYOUT.cpx(gauge.RING_WIDTH)
         for index, expected in enumerate((gauge.BLUE, gauge.ORANGE, gauge.RED)):
             left, top, right, bottom = gauge.card_box(index, self.LAYOUT)
             x, y = (left + right) / 2 + radius - width / 2, top + (bottom - top - content_height) / 2 + ring_y
             pixel = image.getpixel((math.floor(x), math.floor(y)))
             with self.subTest(index=index):
                 self.assertTrue(all(abs(a - b) <= 12 for a, b in zip(pixel, expected)), pixel)
+
+    def test_content_is_enlarged_and_still_fits(self):
+        # 5.2 インチは余白が大きかったので、カードの中身を大きくした（2026-10-13）。3.5 インチは変えない
+        self.assertEqual((gauge.layout_for((480, 320)).content, gauge.layout_for((480, 320)).stamp), (1.0, gauge.FOOTNOTE))
+        self.assertGreater(self.LAYOUT.content, 1.0)
+        *_rows, content_height = gauge.content_rows(self.LAYOUT)
+        _left, top, _right, bottom = gauge.card_box(0, self.LAYOUT)
+        self.assertGreaterEqual((bottom - top - content_height) / 2, 20)  # 上下に余白が残る
+        self.assertLess(2 * self.LAYOUT.cpx(gauge.RING_RADIUS), self.LAYOUT.card_width - 2 * self.LAYOUT.px(gauge.CARD_PADDING))
 
     def test_card_content_is_vertically_centered(self):
         image = gauge.render(snapshot(26, 74, 93), NOW, size=self.SIZE)
@@ -133,7 +142,7 @@ class LargeGaugeTest(unittest.TestCase):
         inked = {x for x in range(width) for y in range(0, round(px(gauge.CARD_TOP)) - 4)
                  if image.getpixel((x, y)) != gauge.BACKGROUND}
         self.assertFalse({x for x in inked if x > width - px(gauge.HEADER_INSET) + 2}, "右の余白にはみ出している")
-        small = gauge.font(self.LAYOUT.pt(gauge.FOOTNOTE), gauge.SMALL_WEIGHT)
+        small = gauge.font(self.LAYOUT.pt(self.LAYOUT.stamp), gauge.SMALL_WEIGHT)
         time_left = width - px(gauge.HEADER_INSET) - small.getlength("15:24 時点")
         gap = range(round(time_left - px(gauge.STATUS_GAP)) + 3, round(time_left) - 3)
         self.assertFalse(inked & set(gap), "理由と時刻が重なっている")

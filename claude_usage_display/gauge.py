@@ -8,6 +8,7 @@ Apple のウィジェット（バッテリー）とアクティビティのリ�
   3.5 インチ（480×320）は iPhone 3GS（3.5 インチ・480×320・163 ppi）と同じ大きさなので、
   iPhone で見る文字とほぼ同じ大きさになる
 - ほかの大きさの画面では、寸法と文字の大きさを高さの比（高さ ÷ 320）で拡大し、増えた横幅はカードの幅に回す。
+  そのうえで、カードの中身（リング・数字・文字）は ``LARGE`` の倍率でさらに大きくする（``layout_for``）
   5.2 インチ（1280×720、約 282 ppi）は 2.25 倍で、文字は 3.5 インチより約 1.3 倍大きく見える
   （2.25 × 165 ÷ 282）。表示部の高さも 49 mm から 62 mm へ約 1.27 倍になるので、縦の配分は変わらない
 - 図形は拡大して描いてから縮め、縁を滑らかにする。文字は縮めるとかすれるため、縮めた後に等倍で書く
@@ -80,16 +81,16 @@ LOWER_CARD_TOP = 235.5
 LOWER_RING_RADIUS = 27.5
 LOWER_RING_WIDTH = 7
 LOWER_NUMBER = 17              # TITLE1 の 0.62 倍
-# 見出しの時刻。3.5 インチのサーバー監視の画面（縦置き）の名前 15・時刻 16 と同じ比にする（2026-10-13 ユーザーの指示）
-GEMINI_STAMP = 16
 
 
 @dataclass(frozen=True)
 class Layout:
-    """画面の大きさに合わせた寸法。"""
+    """画面の大きさに合わせた寸法。``content`` はカードの中身の倍率、``stamp`` は見出しの右の時刻の大きさ（pt）。"""
 
     width: int = WIDTH
     height: int = HEIGHT
+    content: float = 1.0
+    stamp: int = FOOTNOTE
 
     @property
     def k(self) -> float:
@@ -99,8 +100,16 @@ class Layout:
     def px(self, value: float) -> float:
         return value * self.k
 
-    def pt(self, size: int) -> int:
+    def pt(self, size: float) -> int:
         return round(size * self.k)
+
+    def cpx(self, value: float) -> float:
+        """カードの中身の寸法。"""
+        return self.px(value * self.content)
+
+    def cpt(self, size: float) -> int:
+        """カードの中身の文字の大きさ。"""
+        return self.pt(size * self.content)
 
     @property
     def supersample(self) -> int:
@@ -109,6 +118,17 @@ class Layout:
     @property
     def card_width(self) -> float:
         return (self.width - self.px(MARGIN) * 2 - self.px(CARD_GAP) * 2) / 3
+
+
+# 大きい画面での調整（高さの比の拡大に加える）。3.5 インチ（480×320）は変えない
+# - content: 5.2 インチは余白が大きかったので、3.5 インチのサーバー監視の画面と同じように、カードの中身を大きくした
+#   （2026-10-13 ユーザーの指示）
+# - stamp: 3.5 インチのサーバー監視の画面（縦置き）の名前 15・時刻 16 と同じ比にする（2026-10-13 ユーザーの指示）
+LARGE = {(1280, 720): {"content": 1.2, "stamp": 16}}
+
+
+def layout_for(size: tuple[int, int]) -> Layout:
+    return Layout(*size, **LARGE.get(tuple(size), {}))
 
 
 @lru_cache(maxsize=None)
@@ -155,14 +175,14 @@ def content_rows(layout: Layout = Layout()) -> tuple[float, float, float, float,
 
     上端は見出しの字の上端、下端は残り時間の字の下端で、どちらもフォントの実寸で測る。
     """
-    px = layout.px
-    ascent = -font(layout.pt(SUBHEAD), 6).getbbox("時", anchor="ls")[1]
-    descent = font(layout.pt(FOOTNOTE), SMALL_WEIGHT).getbbox("あと", anchor="ls")[3]
+    cpx = layout.cpx
+    ascent = -font(layout.cpt(SUBHEAD), 6).getbbox("時", anchor="ls")[1]
+    descent = font(layout.cpt(FOOTNOTE), SMALL_WEIGHT).getbbox("あと", anchor="ls")[3]
     label = ascent
-    ring_center = label + px(16) + px(RING_RADIUS)
-    caption = ring_center + px(RING_RADIUS) + px(28)
-    when = caption + px(22)
-    remain = when + px(27)  # 日時との間を空け、残り時間を別の情報として読ませる
+    ring_center = label + cpx(16) + cpx(RING_RADIUS)
+    caption = ring_center + cpx(RING_RADIUS) + cpx(28)
+    when = caption + cpx(22)
+    remain = when + cpx(27)  # 日時との間を空け、残り時間を別の情報として読ませる
     return label, ring_center, caption, when, remain, remain + descent
 
 
@@ -283,8 +303,8 @@ def render(snapshot: Snapshot | None, now: datetime, status: str | None = None,
 
     ``icons`` は ``load_icons`` の結果。``claude`` があれば見出しの名前の左に出す。
     """
-    layout = Layout(*size)
-    px, pt = layout.px, layout.pt
+    layout = layout_for(size)
+    px, cpx, cpt = layout.px, layout.cpx, layout.cpt
     width = layout.width
     meters = snapshot.meters[:3] if snapshot else tuple(Meter(label, None, None) for label in labels)
     label_y, ring_y, caption_y, when_y, remain_y, content_height = content_rows(layout)
@@ -297,25 +317,27 @@ def render(snapshot: Snapshot | None, now: datetime, status: str | None = None,
         origin = top + (bottom - top - content_height) / 2
         cx = (left + right) / 2
         percent = None if meter.percent is None else max(0.0, min(100.0, meter.percent))
-        shapes.ring(cx, origin + ring_y, percent)
+        shapes.ring(cx, origin + ring_y, percent, RING_RADIUS * layout.content, RING_WIDTH * layout.content)
         centers.append((cx, origin))
     if status:
         shapes.circle(*_badge(layout, HEADER_BASELINE), px(7), ORANGE)
 
     image = shapes.finish()
     draw = ImageDraw.Draw(image)
-    _header(image, draw, layout, HEADER_BASELINE, "Claude Code", snapshot, status, (icons or {}).get("claude"))
+    _header(image, draw, layout, HEADER_BASELINE, "Claude Code", snapshot, status, (icons or {}).get("claude"),
+            layout.stamp)
 
     inner = layout.card_width - px(CARD_PADDING) * 2
     for (cx, origin), meter in zip(centers, meters):
-        draw.text((cx, origin + label_y), meter.label, font=fit_font(meter.label, inner, pt(SUBHEAD), 6),
+        draw.text((cx, origin + label_y), meter.label, font=fit_font(meter.label, inner, cpt(SUBHEAD), 6),
                   fill=LABEL, anchor="ms")
         percent = None if meter.percent is None else max(0.0, meter.percent)
-        _value(draw, cx, origin + ring_y + px(10), percent, layout)
+        _value(draw, cx, origin + ring_y + cpx(10), percent, layout, TITLE1 * layout.content,
+               SUBHEAD * layout.content)
         when, remain = reset_lines(meter.resets_at, now)
-        draw.text((cx, origin + caption_y), "リセット", font=font(pt(CAPTION1), 3), fill=SECONDARY, anchor="ms")
-        draw.text((cx, origin + when_y), when, font=fit_font(when, inner, pt(SUBHEAD), 6), fill=LABEL, anchor="ms")
-        draw.text((cx, origin + remain_y), remain, font=fit_font(remain, inner, pt(FOOTNOTE), SMALL_WEIGHT),
+        draw.text((cx, origin + caption_y), "リセット", font=font(cpt(CAPTION1), 3), fill=SECONDARY, anchor="ms")
+        draw.text((cx, origin + when_y), when, font=fit_font(when, inner, cpt(SUBHEAD), 6), fill=LABEL, anchor="ms")
+        draw.text((cx, origin + remain_y), remain, font=fit_font(remain, inner, cpt(FOOTNOTE), SMALL_WEIGHT),
                   fill=LABEL, anchor="ms")
     return image
 
@@ -346,7 +368,7 @@ def render_with_gemini(snapshot: Snapshot | None, gemini: Snapshot | None, now: 
 
     ``gemini_status`` は Gemini の取得に失敗したときの短い説明で、下の段の見出しに出す。
     """
-    layout = Layout(*size)
+    layout = layout_for(size)
     px, pt = layout.px, layout.pt
     icons = icons or {}
     meters = snapshot.meters[:3] if snapshot else tuple(Meter(label, None, None) for label in labels)
@@ -380,9 +402,9 @@ def render_with_gemini(snapshot: Snapshot | None, gemini: Snapshot | None, now: 
 
     image = shapes.finish()
     draw = ImageDraw.Draw(image)
-    _header(image, draw, layout, HEADER_BASELINE, "Claude Code", snapshot, status, icons.get("claude"), GEMINI_STAMP)
+    _header(image, draw, layout, HEADER_BASELINE, "Claude Code", snapshot, status, icons.get("claude"), layout.stamp)
     _header(image, draw, layout, GEMINI_BASELINE, "Antigravity", gemini, gemini_status, icons.get("gemini"),
-            GEMINI_STAMP)
+            layout.stamp)
 
     inner = layout.card_width - px(CARD_PADDING) * 2
     for (cx, origin), meter in zip(upper, meters):
