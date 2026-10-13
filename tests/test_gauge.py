@@ -126,6 +126,19 @@ class LargeGaugeTest(unittest.TestCase):
         self.assertGreaterEqual((bottom - top - content_height) / 2, 20)  # 上下に余白が残る
         self.assertLess(2 * self.LAYOUT.cpx(gauge.RING_RADIUS), self.LAYOUT.card_width - 2 * self.LAYOUT.px(gauge.CARD_PADDING))
 
+    def test_remaining_time_is_written_like_the_reset_caption(self):
+        # 5.2 インチは「あと…」を「リセット」の見出しと同じ灰色・大きさ・太さにする（2026-10-13）。3.5 インチは白の W4 のまま
+        self.assertEqual(gauge._remain_style(self.LAYOUT), (self.LAYOUT.cpt(gauge.CAPTION1), 3, gauge.SECONDARY))
+        self.assertEqual(gauge._remain_style(gauge.layout_for((480, 320))), (13, gauge.SMALL_WEIGHT, gauge.LABEL))
+        image = gauge.render(snapshot(26, 74, 93), NOW, size=self.SIZE)
+        _label, _ring, _caption, _when, remain_y, content_height = gauge.content_rows(self.LAYOUT)
+        left, top, right, bottom = gauge.card_box(0, self.LAYOUT)
+        baseline = round(top + (bottom - top - content_height) / 2 + remain_y)
+        band = [image.getpixel((x, y)) for x in range(round(left) + 20, round(right) - 20)
+                for y in range(baseline - 25, baseline + 4)]
+        self.assertTrue(any(near(p, gauge.SECONDARY, 20) for p in band), "灰色の字が無い")
+        self.assertFalse(any(min(p) > 200 for p in band), "白い字が残っている")
+
     def test_card_content_is_vertically_centered(self):
         image = gauge.render(snapshot(26, 74, 93), NOW, size=self.SIZE)
         inset = math.ceil(self.LAYOUT.px(gauge.CARD_RADIUS))

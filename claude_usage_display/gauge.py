@@ -91,6 +91,7 @@ class Layout:
     height: int = HEIGHT
     content: float = 1.0
     stamp: int = FOOTNOTE
+    quiet_remain: bool = False  # 残り時間を「リセット」の見出しと同じ灰色の小さい字にする
 
     @property
     def k(self) -> float:
@@ -124,11 +125,21 @@ class Layout:
 # - content: 5.2 インチは余白が大きかったので、3.5 インチのサーバー監視の画面と同じように、カードの中身を大きくした
 #   （2026-10-13 ユーザーの指示）
 # - stamp: 3.5 インチのサーバー監視の画面（縦置き）の名前 15・時刻 16 と同じ比にする（2026-10-13 ユーザーの指示）
-LARGE = {(1280, 720): {"content": 1.2, "stamp": 16}}
+# - quiet_remain: 「あと…」を「リセット」の見出しと同じ書き方にする（2026-10-13、ユーザーが見本の 2 案から選んだ）。
+#   3.5 インチでは「薄くて見えない」として白にした（2026-10-09）うえ、12 ピクセルの W3 は「4」の横棒が消えるので変えない
+LARGE = {(1280, 720): {"content": 1.2, "stamp": 16, "quiet_remain": True}}
 
 
 def layout_for(size: tuple[int, int]) -> Layout:
     return Layout(*size, **LARGE.get(tuple(size), {}))
+
+
+def _remain_style(layout: Layout, scaled: bool = True) -> tuple[int, int, tuple[int, int, int]]:
+    """残り時間（「あと…」）の字の大きさ（ピクセル）・太さ・色。``scaled`` はカードの中身の倍率を掛けるか。"""
+    size = (layout.cpt if scaled else layout.pt)(CAPTION1 if layout.quiet_remain else FOOTNOTE)
+    if layout.quiet_remain:  # 「リセット」の見出しと同じ（13 ピクセル以下になるときだけ W4）
+        return size, 3 if size > 13 else SMALL_WEIGHT, SECONDARY
+    return size, SMALL_WEIGHT, LABEL
 
 
 @lru_cache(maxsize=None)
@@ -177,7 +188,8 @@ def content_rows(layout: Layout = Layout()) -> tuple[float, float, float, float,
     """
     cpx = layout.cpx
     ascent = -font(layout.cpt(SUBHEAD), 6).getbbox("時", anchor="ls")[1]
-    descent = font(layout.cpt(FOOTNOTE), SMALL_WEIGHT).getbbox("あと", anchor="ls")[3]
+    remain_size, remain_weight, _color = _remain_style(layout)
+    descent = font(remain_size, remain_weight).getbbox("あと", anchor="ls")[3]
     label = ascent
     ring_center = label + cpx(16) + cpx(RING_RADIUS)
     caption = ring_center + cpx(RING_RADIUS) + cpx(28)
@@ -337,8 +349,9 @@ def render(snapshot: Snapshot | None, now: datetime, status: str | None = None,
         when, remain = reset_lines(meter.resets_at, now)
         draw.text((cx, origin + caption_y), "リセット", font=font(cpt(CAPTION1), 3), fill=SECONDARY, anchor="ms")
         draw.text((cx, origin + when_y), when, font=fit_font(when, inner, cpt(SUBHEAD), 6), fill=LABEL, anchor="ms")
-        draw.text((cx, origin + remain_y), remain, font=fit_font(remain, inner, cpt(FOOTNOTE), SMALL_WEIGHT),
-                  fill=LABEL, anchor="ms")
+        remain_size, remain_weight, remain_color = _remain_style(layout)
+        draw.text((cx, origin + remain_y), remain, font=fit_font(remain, inner, remain_size, remain_weight),
+                  fill=remain_color, anchor="ms")
     return image
 
 
@@ -346,7 +359,8 @@ def _upper_rows(layout: Layout) -> tuple[float, float, float, float, float]:
     """上の段のカードの中身の各行の位置（中身の上端から測る）と、中身の高さ。"""
     px = layout.px
     ascent = -font(layout.pt(SUBHEAD), 6).getbbox("時", anchor="ls")[1]
-    descent = font(layout.pt(FOOTNOTE), SMALL_WEIGHT).getbbox("あと", anchor="ls")[3]
+    remain_size, remain_weight, _color = _remain_style(layout, scaled=False)
+    descent = font(remain_size, remain_weight).getbbox("あと", anchor="ls")[3]
     label = ascent
     ring_center = label + px(10) + px(UPPER_RING_RADIUS)
     when = ring_center + px(UPPER_RING_RADIUS) + px(25)
@@ -407,6 +421,7 @@ def render_with_gemini(snapshot: Snapshot | None, gemini: Snapshot | None, now: 
             layout.stamp)
 
     inner = layout.card_width - px(CARD_PADDING) * 2
+    remain_size, remain_weight, remain_color = _remain_style(layout, scaled=False)
     for (cx, origin), meter in zip(upper, meters):
         draw.text((cx, origin + label_y), meter.label, font=fit_font(meter.label, inner, pt(SUBHEAD), 6),
                   fill=LABEL, anchor="ms")
@@ -415,8 +430,8 @@ def render_with_gemini(snapshot: Snapshot | None, gemini: Snapshot | None, now: 
         when, remain = reset_lines(meter.resets_at, now)
         text = _reset_text(when)
         draw.text((cx, origin + when_y), text, font=fit_font(text, inner, pt(SUBHEAD), 6), fill=LABEL, anchor="ms")
-        draw.text((cx, origin + remain_y), remain, font=fit_font(remain, inner, pt(FOOTNOTE), SMALL_WEIGHT),
-                  fill=LABEL, anchor="ms")
+        draw.text((cx, origin + remain_y), remain, font=fit_font(remain, inner, remain_size, remain_weight),
+                  fill=remain_color, anchor="ms")
     for (left, cx, cy), meter in zip(lower, gemini_meters):
         percent = None if meter.percent is None else max(0.0, meter.percent)
         _value(draw, cx, cy + px(LOWER_NUMBER * 0.36), percent, layout, LOWER_NUMBER, 9)
@@ -428,6 +443,6 @@ def render_with_gemini(snapshot: Snapshot | None, gemini: Snapshot | None, now: 
                   fill=LABEL, anchor="ls")
         draw.text((text_left, cy + px(8)), text, font=fit_font(text, width, pt(SUBHEAD), 6), fill=LABEL,
                   anchor="ls")
-        draw.text((text_left, cy + px(27.5)), remain, font=fit_font(remain, width, pt(FOOTNOTE), SMALL_WEIGHT),
-                  fill=LABEL, anchor="ls")
+        draw.text((text_left, cy + px(27.5)), remain, font=fit_font(remain, width, remain_size, remain_weight),
+                  fill=remain_color, anchor="ls")
     return image
