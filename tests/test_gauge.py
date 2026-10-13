@@ -148,7 +148,7 @@ class LargeGaugeTest(unittest.TestCase):
 
 def gemini(*percents):
     resets = (NOW + timedelta(hours=2), NOW + timedelta(days=3))
-    return Snapshot(tuple(Meter(label, p, r) for label, p, r in zip(("5時間", "週次"), percents, resets)), NOW)
+    return Snapshot(tuple(Meter(label, p, r) for label, p, r in zip(("Gemini 5時間", "Gemini 週次"), percents, resets)), NOW)
 
 
 def near(pixel, color, tolerance=12):

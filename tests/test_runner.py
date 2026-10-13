@@ -169,7 +169,7 @@ class RunnerTest(unittest.TestCase):
                 mock.patch.object(cli.gauge, "render_with_gemini", draw):
             runner.loop()
         self.assertEqual(draw.call_args.kwargs["size"], (480, 320))
-        self.assertEqual(draw.call_args.args[6], ("5時間", "週次"))
+        self.assertEqual(draw.call_args.args[6], ("Gemini 5時間", "Gemini 週次"))
 
     def test_unplugging_is_logged_in_one_line_and_waits_again(self):
         import usb.core

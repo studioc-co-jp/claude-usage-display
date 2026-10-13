@@ -31,7 +31,7 @@ def usage_line(groups=None, **top):
 class ParseTest(unittest.TestCase):
     def test_reads_the_gemini_group_in_five_hour_then_weekly_order(self):
         snapshot = ag.parse_usage(usage_line() + "\n", "", NOW)
-        self.assertEqual([m.label for m in snapshot.meters], ["5時間", "週次"])
+        self.assertEqual([m.label for m in snapshot.meters], ["Gemini 5時間", "Gemini 週次"])
         self.assertEqual([round(m.percent) for m in snapshot.meters], [2, 6])
         self.assertEqual(snapshot.meters[0].resets_at, datetime(2026, 10, 10, 18, 37, tzinfo=timezone.utc))
         self.assertEqual(snapshot.fetched_at, NOW)
@@ -62,7 +62,7 @@ class ParseTest(unittest.TestCase):
             {"window": "5h", "remaining_fraction": 0.5, "reset_time": "2026-10-10T18:37:00Z", "disabled": True},
             {"window": "weekly", "remaining_fraction": 0.25, "reset_time": "2026-10-14T07:31:00Z"}]}]
         meters = ag.parse_usage(usage_line(groups=groups), "", NOW).meters
-        self.assertEqual([(m.label, m.percent) for m in meters], [("5時間", None), ("週次", 75.0)])
+        self.assertEqual([(m.label, m.percent) for m in meters], [("Gemini 5時間", None), ("Gemini 週次", 75.0)])
 
     def test_version(self):
         self.assertEqual(ag.parse_version("1.3.1\n"), (1, 3, 1))

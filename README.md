@@ -10,7 +10,7 @@ Claude Code の利用枠 3 つ（**5 時間・週次・Fable 週次**）を、Ma
 - 取得に失敗したときは、前回の値を残したまま、上端の見出しの位置に理由をオレンジで、右にその値を取得した時刻（「16:50 時点」）を出します
 - まだ値が無いときは、ゲージを灰色にして「--」を出します
 
-5.2 インチでは、Google の Antigravity の Gemini の枠（5 時間・週）も下の段に出せます（「Gemini（Antigravity）の枠も出す」を参照）。
+5.2 インチでは、Google の Antigravity の Gemini の枠（5 時間・週）も下の段に出せます（「Antigravity の Gemini の枠も出す」を参照）。
 
 最初に作った横棒の画面も `--theme classic` で使えます。
 
@@ -169,11 +169,13 @@ launchctl print gui/$(id -u)/jp.co.studioc.claude-usage-display | grep -E "^$(pr
 tail -f ~/Library/Logs/claude-usage-display.log
 ```
 
-## Gemini（Antigravity）の枠も出す
+## Antigravity の Gemini の枠も出す
 
 `--gemini` を付けると、上の段に Claude Code の 3 枚、下の段に Antigravity の Gemini の枠（5 時間・週）の 2 枚を出します。
 
-![Gemini の枠を足した 5.2 インチの画面（見本の値）](docs/images/gauge-gemini-1280x720.png)
+下の段の見出しは、値の出どころの「Antigravity」です。カードの名前は「Gemini 5時間」「Gemini 週次」です。Antigravity の Gemini のモデルの枠で、Gemini アプリや Gemini CLI の枠ではありません（Gemini CLI の上限は、[Quota and pricing](https://github.com/google-gemini/gemini-cli/blob/main/docs/resources/quota-and-pricing.md) に 1 日の回数で書かれています）。
+
+![Antigravity の Gemini の枠を足した 5.2 インチの画面（見本の値）](docs/images/gauge-gemini-1280x720.png)
 
 ```
 .venv/bin/python -m claude_usage_display preview --demo --gemini --size 1280x720 -o demo.png  # 見本の値で描く

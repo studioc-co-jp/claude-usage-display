@@ -106,8 +106,8 @@ def _demo_snapshot(now: datetime, model: str) -> Snapshot:
 
 def _demo_gemini(now: datetime) -> Snapshot:
     return Snapshot((
-        Meter("5時間", 12, now + timedelta(hours=2, minutes=5)),
-        Meter("週次", 38, now + timedelta(days=3, hours=3)),
+        Meter("Gemini 5時間", 12, now + timedelta(hours=2, minutes=5)),
+        Meter("Gemini 週次", 38, now + timedelta(days=3, hours=3)),
     ), now - timedelta(minutes=4))
 
 

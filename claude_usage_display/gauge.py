@@ -11,8 +11,10 @@ Apple のウィジェット（バッテリー）とアクティビティのリ�
   5.2 インチ（1280×720、約 282 ppi）は 2.25 倍で、文字は 3.5 インチより約 1.3 倍大きく見える
   （2.25 × 165 ÷ 282）。表示部の高さも 49 mm から 62 mm へ約 1.27 倍になるので、縦の配分は変わらない
 - 図形は拡大して描いてから縮め、縁を滑らかにする。文字は縮めるとかすれるため、縮めた後に等倍で書く
-- ``render_with_gemini`` は、Gemini（Antigravity）の枠を足した画面。上の段に Claude Code の 3 枚、下の段に
-  Gemini の 2 枚（横長のカードの左にリング）を置く（2026-10-11 にユーザーが見本の 2 案から選んだ「案 B」）
+- ``render_with_gemini`` は、Antigravity の Gemini の枠を足した画面。上の段に Claude Code の 3 枚、下の段に
+  Gemini の 2 枚（横長のカードの左にリング）を置く（2026-10-11 にユーザーが見本の 2 案から選んだ「案 B」）。
+  下の段の見出しは出どころの「Antigravity」、カードの名前は「Gemini 5時間」「Gemini 週次」
+  （Gemini アプリや Gemini CLI の枠と区別するため。2026-10-13 ユーザーが決定）
 - 見出しの左に、Claude と Gemini のアイコンを出せる（``load_icons``）。ロゴはリポジトリに入れず、
   この Mac のフォルダから読む。Anthropic と Google の商標の指針は、ロゴの使用に承認を求めるため（README「アイコン」）
 """
@@ -334,10 +336,10 @@ def _reset_text(when: str) -> str:
 def render_with_gemini(snapshot: Snapshot | None, gemini: Snapshot | None, now: datetime,
                        status: str | None = None, gemini_status: str | None = None,
                        labels: tuple[str, ...] = ("5時間", "週次", "Fable週次"),
-                       gemini_labels: tuple[str, ...] = ("5時間", "週次"),
+                       gemini_labels: tuple[str, ...] = ("Gemini 5時間", "Gemini 週次"),
                        size: tuple[int, int] = (WIDTH, HEIGHT),
                        icons: dict[str, Image.Image] | None = None) -> Image.Image:
-    """上の段に Claude Code の 3 枚、下の段に Gemini（Antigravity）の 2 枚を出す。
+    """上の段に Claude Code の 3 枚、下の段に Antigravity の Gemini の枠の 2 枚を出す。
 
     ``gemini_status`` は Gemini の取得に失敗したときの短い説明で、下の段の見出しに出す。
     """
@@ -376,7 +378,7 @@ def render_with_gemini(snapshot: Snapshot | None, gemini: Snapshot | None, now: 
     image = shapes.finish()
     draw = ImageDraw.Draw(image)
     _header(image, draw, layout, HEADER_BASELINE, "Claude Code", snapshot, status, icons.get("claude"))
-    _header(image, draw, layout, GEMINI_BASELINE, "Gemini", gemini, gemini_status, icons.get("gemini"))
+    _header(image, draw, layout, GEMINI_BASELINE, "Antigravity", gemini, gemini_status, icons.get("gemini"))
 
     inner = layout.card_width - px(CARD_PADDING) * 2
     for (cx, origin), meter in zip(upper, meters):

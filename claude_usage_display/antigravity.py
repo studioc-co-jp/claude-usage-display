@@ -36,7 +36,8 @@ TIMEOUT_SECONDS = 60
 SEARCH_PATHS = ("/opt/homebrew/bin/agy", "/usr/local/bin/agy")
 WORKDIR = Path.home() / "Library" / "Application Support" / "claude-usage-display" / "agy"
 GROUP = "gemini"  # グループ名にこの語を含むもの（「Gemini Models」）
-WINDOWS = (("5h", "5時間"), ("weekly", "週次"))
+# 画面の名前。出どころは見出しの「Antigravity」で、カードにはモデルのグループ（Gemini）を書く（2026-10-13 ユーザーが決定）
+WINDOWS = (("5h", "Gemini 5時間"), ("weekly", "Gemini 週次"))
 LABELS = tuple(label for _window, label in WINDOWS)
 ERROR_MARK = "AGY_ERROR:"
 SIGNED_OUT = ("not logged into antigravity", "not logged in", "not signed in", "not authenticated",
