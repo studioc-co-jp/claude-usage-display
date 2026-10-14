@@ -24,7 +24,7 @@ Apple のウィジェット（バッテリー）とアクティビティのリ�
 from __future__ import annotations
 
 import math
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from datetime import datetime, timedelta
 from functools import lru_cache
 
@@ -66,6 +66,7 @@ CARD_TOP = 36
 CARD_GAP = 8
 CARD_RADIUS = 18
 CARD_PADDING = 10
+REMAIN_GAP = 27  # リセットの日時と残り時間の間（基準線どうし）。間を空け、残り時間を別の情報として読ませる
 CARD_WIDTH = (WIDTH - MARGIN * 2 - CARD_GAP * 2) / 3
 RING_RADIUS = 50
 RING_WIDTH = 11
@@ -96,6 +97,8 @@ class Layout:
     quiet_remain: bool = False  # 残り時間を「リセット」の見出しと同じ灰色の小さい字にする
     blue: tuple[int, int, int] = BLUE  # リングの弧の青（地は BLUE から作る）
     cards: bool = True  # False はカードの面を描かず、黒地に縦の区切り線を引く
+    ring: float = 1.0  # リングの半径と太さの倍率（content に掛ける）。大きくした分は下へ伸ばす
+    remain_gap: float = REMAIN_GAP  # リセットの日時と残り時間の間（3.5 インチの寸法。content を掛ける）
 
     @property
     def k(self) -> float:
@@ -116,6 +119,10 @@ class Layout:
         """カードの中身の文字の大きさ。"""
         return self.pt(size * self.content)
 
+    def ring_px(self) -> tuple[float, float]:
+        """3 枚の画面のリングの半径と太さ（ピクセル）。"""
+        return self.cpx(RING_RADIUS) * self.ring, self.cpx(RING_WIDTH) * self.ring
+
     @property
     def supersample(self) -> int:
         return max(2, round(SCALE / self.k))
@@ -135,7 +142,11 @@ class Layout:
 #   （2026-10-15、ユーザーが実機で候補 5 つから選んだ）。5.2 インチは PNG で送るので、RGB565 に落ちない
 # - cards: カードの面の薄い灰色が、3.5 インチのサーバーの状態の画面（黒地）と色が違って見える原因の 1 つだったので、
 #   カードをやめて黒地にし、同じ画面と同じく薄い縦の区切り線を引く（2026-10-15 ユーザーの指示）
-LARGE = {(1280, 720): {"content": 1.2, "stamp": 16, "quiet_remain": True, "blue": (0, 105, 255), "cards": False}}
+# - ring・remain_gap: カードが無くなって下の隙間が目立ったので、リングを 1.15 倍にして「リセット」以降を下げ、
+#   「あと…」を日時に寄せた（日時との隙間 24 px は「リセット」と日時の隙間と同じ。下の余白は左右と同じ 27 px）。
+#   名前の位置は変えていない（2026-10-15、ユーザーが実機で候補から選んだ）
+LARGE = {(1280, 720): {"content": 1.2, "stamp": 16, "quiet_remain": True, "blue": (0, 105, 255), "cards": False,
+                       "ring": 1.15, "remain_gap": 22}}
 
 
 def layout_for(size: tuple[int, int]) -> Layout:
@@ -198,12 +209,20 @@ def content_rows(layout: Layout = Layout()) -> tuple[float, float, float, float,
     ascent = -font(layout.cpt(SUBHEAD), 6).getbbox("時", anchor="ls")[1]
     remain_size, remain_weight, _color = _remain_style(layout)
     descent = font(remain_size, remain_weight).getbbox("あと", anchor="ls")[3]
+    radius = cpx(RING_RADIUS) * layout.ring
     label = ascent
-    ring_center = label + cpx(16) + cpx(RING_RADIUS)
-    caption = ring_center + cpx(RING_RADIUS) + cpx(28)
+    ring_center = label + cpx(16) + radius
+    caption = ring_center + radius + cpx(28)
     when = caption + cpx(22)
-    remain = when + cpx(27)  # 日時との間を空け、残り時間を別の情報として読ませる
+    remain = when + cpx(layout.remain_gap)
     return label, ring_center, caption, when, remain, remain + descent
+
+
+def content_top(layout: Layout = Layout()) -> float:
+    """カードの中身の上端。リングが等倍のときの中身をカードの高さの中央に置く位置で、
+    リングの大きさや残り時間の間を変えても名前の位置は変えず、下の行だけを動かす。"""
+    _left, top, _right, bottom = card_box(0, layout)
+    return top + (bottom - top - content_rows(replace(layout, ring=1.0, remain_gap=REMAIN_GAP))[-1]) / 2
 
 
 def card_box(index: int, layout: Layout = Layout()) -> tuple[float, float, float, float]:
@@ -343,7 +362,7 @@ def render(snapshot: Snapshot | None, now: datetime, status: str | None = None,
     px, cpx, cpt = layout.px, layout.cpx, layout.cpt
     width = layout.width
     meters = snapshot.meters[:3] if snapshot else tuple(Meter(label, None, None) for label in labels)
-    label_y, ring_y, caption_y, when_y, remain_y, content_height = content_rows(layout)
+    label_y, ring_y, caption_y, when_y, remain_y, _content_height = content_rows(layout)
 
     shapes = _Shapes(layout)
     centers = []
@@ -351,11 +370,11 @@ def render(snapshot: Snapshot | None, now: datetime, status: str | None = None,
         left, top, right, bottom = card_box(index, layout)
         if layout.cards:
             shapes.rounded_rectangle((left, top, right, bottom), px(CARD_RADIUS), CARD)
-        origin = top + (bottom - top - content_height) / 2
+        origin = content_top(layout)
         cx = (left + right) / 2
         percent = None if meter.percent is None else max(0.0, min(100.0, meter.percent))
-        shapes.ring(cx, origin + ring_y, percent, RING_RADIUS * layout.content, RING_WIDTH * layout.content,
-                    CARD if layout.cards else BACKGROUND)
+        shapes.ring(cx, origin + ring_y, percent, RING_RADIUS * layout.content * layout.ring,
+                    RING_WIDTH * layout.content * layout.ring, CARD if layout.cards else BACKGROUND)
         centers.append((cx, origin))
     if status:
         shapes.circle(*_badge(layout, HEADER_BASELINE), px(7), ORANGE)

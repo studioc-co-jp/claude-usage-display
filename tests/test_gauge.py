@@ -1,4 +1,5 @@
 import math
+from dataclasses import replace
 import unittest
 from datetime import datetime, timedelta, timezone
 
@@ -56,7 +57,7 @@ class GaugeRenderTest(unittest.TestCase):
         for index, expected in enumerate((gauge.BLUE, gauge.ORANGE, gauge.RED)):
             left, top, right, bottom = gauge.card_box(index)
             cx = (left + right) / 2
-            cy = top + (bottom - top - content_height) / 2 + ring_y
+            cy = gauge.content_top() + ring_y
             # 3 時の位置（どの値でも 25% を超えていれば塗られている）
             x, y = cx + gauge.RING_RADIUS - gauge.RING_WIDTH / 2, cy
             pixel = image.getpixel((math.floor(x), math.floor(y)))
@@ -109,10 +110,10 @@ class LargeGaugeTest(unittest.TestCase):
     def test_ring_color_follows_severity(self):
         image = gauge.render(snapshot(26, 74, 93), NOW, size=self.SIZE)
         _label, ring_y, *_rest, content_height = gauge.content_rows(self.LAYOUT)
-        radius, width = self.LAYOUT.cpx(gauge.RING_RADIUS), self.LAYOUT.cpx(gauge.RING_WIDTH)
+        radius, width = self.LAYOUT.ring_px()
         for index, expected in enumerate((self.LAYOUT.blue, gauge.ORANGE, gauge.RED)):
             left, top, right, bottom = gauge.card_box(index, self.LAYOUT)
-            x, y = (left + right) / 2 + radius - width / 2, top + (bottom - top - content_height) / 2 + ring_y
+            x, y = (left + right) / 2 + radius - width / 2, gauge.content_top(self.LAYOUT) + ring_y
             pixel = image.getpixel((math.floor(x), math.floor(y)))
             with self.subTest(index=index):
                 self.assertTrue(all(abs(a - b) <= 12 for a, b in zip(pixel, expected)), pixel)
@@ -124,14 +125,26 @@ class LargeGaugeTest(unittest.TestCase):
         self.assertEqual(gauge.layout_for((480, 320)).blue, gauge.BLUE)
         image = gauge.render(snapshot(26, 74, 93), NOW, size=self.SIZE)
         _label, ring_y, *_rest, content_height = gauge.content_rows(self.LAYOUT)
-        radius, width = self.LAYOUT.cpx(gauge.RING_RADIUS), self.LAYOUT.cpx(gauge.RING_WIDTH)
+        radius, width = self.LAYOUT.ring_px()
         left, top, right, bottom = gauge.card_box(0, self.LAYOUT)
-        y = top + (bottom - top - content_height) / 2 + ring_y
+        y = gauge.content_top(self.LAYOUT) + ring_y
         arc = image.getpixel((math.floor((left + right) / 2 + radius - width / 2), math.floor(y)))  # 3 時: 26% の弧の中
         track = image.getpixel((math.floor((left + right) / 2 - radius + width / 2), math.floor(y)))  # 9 時: 地
         self.assertTrue(all(abs(a - b) <= 2 for a, b in zip(arc, self.LAYOUT.blue)), arc)
         expected = gauge._mix(gauge.BLUE, gauge.BACKGROUND, gauge.DARK_TRACK_MIX)
         self.assertTrue(all(abs(a - b) <= 2 for a, b in zip(track, expected)), track)
+
+    def test_larger_ring_moves_only_the_rows_below_it(self):
+        # カードが無くなって下の隙間が目立ったので、リングを 1.15 倍にし、「あと…」を日時に寄せた（2026-10-15）。名前は動かさない
+        self.assertEqual((self.LAYOUT.ring, self.LAYOUT.remain_gap), (1.15, 22))
+        self.assertEqual((gauge.layout_for((480, 320)).ring, gauge.layout_for((480, 320)).remain_gap), (1.0, gauge.REMAIN_GAP))
+        plain = replace(self.LAYOUT, ring=1.0, remain_gap=gauge.REMAIN_GAP)
+        rows, plain_rows = gauge.content_rows(self.LAYOUT), gauge.content_rows(plain)
+        self.assertEqual(gauge.content_top(self.LAYOUT), gauge.content_top(plain))
+        self.assertEqual(rows[0], plain_rows[0])  # 名前
+        self.assertGreater(rows[1], plain_rows[1])  # リングの中心
+        bottom = gauge.content_top(self.LAYOUT) + rows[-1]
+        self.assertAlmostEqual(self.LAYOUT.height - bottom, self.LAYOUT.px(gauge.MARGIN), delta=1)  # 下の余白は左右と同じ
 
     def test_cards_are_replaced_by_dividers(self):
         # カードの面の灰色が 3.5 インチ（黒地）と色が違って見える原因の 1 つだったので、黒地に縦の区切り線にした（2026-10-15）
@@ -153,9 +166,10 @@ class LargeGaugeTest(unittest.TestCase):
         self.assertEqual((gauge.layout_for((480, 320)).content, gauge.layout_for((480, 320)).stamp), (1.0, gauge.FOOTNOTE))
         self.assertGreater(self.LAYOUT.content, 1.0)
         *_rows, content_height = gauge.content_rows(self.LAYOUT)
-        _left, top, _right, bottom = gauge.card_box(0, self.LAYOUT)
-        self.assertGreaterEqual((bottom - top - content_height) / 2, 20)  # 上下に余白が残る
-        self.assertLess(2 * self.LAYOUT.cpx(gauge.RING_RADIUS), self.LAYOUT.card_width - 2 * self.LAYOUT.px(gauge.CARD_PADDING))
+        self.assertGreaterEqual(gauge.content_top(self.LAYOUT) - self.LAYOUT.px(gauge.CARD_TOP), 20)  # 見出しとの間
+        bottom_margin = self.LAYOUT.height - (gauge.content_top(self.LAYOUT) + content_height)
+        self.assertGreaterEqual(bottom_margin, self.LAYOUT.px(gauge.MARGIN))  # 下の端との間
+        self.assertLess(2 * self.LAYOUT.ring_px()[0], self.LAYOUT.card_width - 2 * self.LAYOUT.px(gauge.CARD_PADDING))
 
     def test_remaining_time_is_written_like_the_reset_caption(self):
         # 5.2 インチは「あと…」を「リセット」の見出しと同じ灰色・大きさ・太さにする（2026-10-13）。3.5 インチは白の W4 のまま
@@ -164,7 +178,7 @@ class LargeGaugeTest(unittest.TestCase):
         image = gauge.render(snapshot(26, 74, 93), NOW, size=self.SIZE)
         _label, _ring, _caption, _when, remain_y, content_height = gauge.content_rows(self.LAYOUT)
         left, top, right, bottom = gauge.card_box(0, self.LAYOUT)
-        baseline = round(top + (bottom - top - content_height) / 2 + remain_y)
+        baseline = round(gauge.content_top(self.LAYOUT) + remain_y)
         band = [image.getpixel((x, y)) for x in range(round(left) + 20, round(right) - 20)
                 for y in range(baseline - 25, baseline + 4)]
         self.assertTrue(any(near(p, gauge.SECONDARY, 20) for p in band), "灰色の字が無い")

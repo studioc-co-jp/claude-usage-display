@@ -218,8 +218,9 @@ class TurzxRunnerTest(unittest.TestCase):
         layout = cli.gauge.layout_for((1280, 720))
         _label, ring_y, *_rest, content_height = cli.gauge.content_rows(layout)
         left, top, right, bottom = cli.gauge.card_box(0, layout)
-        x = int((left + right) / 2 + layout.cpx(cli.gauge.RING_RADIUS) - layout.cpx(cli.gauge.RING_WIDTH) / 2)
-        y = int(top + (bottom - top - content_height) / 2 + ring_y)
+        radius, width = layout.ring_px()
+        x = int((left + right) / 2 + radius - width / 2)
+        y = int(cli.gauge.content_top(layout) + ring_y)
         pixel = sent.getpixel((719 - y, x))
         self.assertTrue(all(abs(a - b) <= 2 for a, b in zip(pixel, layout.blue)), pixel)
 
