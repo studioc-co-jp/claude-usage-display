@@ -18,7 +18,7 @@ from dataclasses import dataclass
 
 from PIL import Image, ImageDraw
 
-from .gauge import BACKGROUND, BLUE, CARD, LABEL, ORANGE, RED, SECONDARY, _mix, rounded
+from .gauge import BACKGROUND, BLUE, CARD, DARK_TRACK_MIX, LABEL, ORANGE, RED, SECONDARY, _mix, rounded
 from .render import JST, SMALL_WEIGHT, fit_font, font
 from .server_monitor import Assessment, MonitorConfig, ServerStatus, warning_tint
 
@@ -131,7 +131,7 @@ def render(status: ServerStatus | None, assessment: Assessment | None, config: M
         else:
             tint = "normal" if value is None else warning_tint(value, spec.threshold)
             color = {"normal": BLUE, "warning": ORANGE, "critical": RED}[tint]
-            track = _mix(SECONDARY if value is None else color, BACKGROUND, 0.22)
+            track = _mix(SECONDARY if value is None else color, BACKGROUND, DARK_TRACK_MIX)
         shapes.ring(x + ring_x, y + ring_y, radius, ring_width, value, color, track)
     # 監視の状態: 赤の状態は白い帯にアラート、それ以外は点と短い文言
     pill_width = layout.pill[2] - layout.pill[0]

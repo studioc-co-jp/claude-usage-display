@@ -117,8 +117,9 @@ class LargeGaugeTest(unittest.TestCase):
             with self.subTest(index=index):
                 self.assertTrue(all(abs(a - b) <= 12 for a, b in zip(pixel, expected)), pixel)
 
-    def test_arc_blue_is_deeper_but_track_is_unchanged(self):
-        # 5.2 インチのパネルでは 3.5 インチと同じ青の弧が暗く見えたので、弧だけ濃い青にした（2026-10-15）。3.5 インチは変えない
+    def test_arc_blue_is_deeper_and_track_is_mixed_into_black(self):
+        # 5.2 インチのパネルでは 3.5 インチと同じ青の弧が暗く見えたので、弧だけ濃い青にした（2026-10-15）。3.5 インチは変えない。
+        # 地はカードをやめた黒地に合わせ、サーバーの状態の画面と同じく BLUE を黒へ寄せて作る
         self.assertEqual(self.LAYOUT.blue, (0, 105, 255))
         self.assertEqual(gauge.layout_for((480, 320)).blue, gauge.BLUE)
         image = gauge.render(snapshot(26, 74, 93), NOW, size=self.SIZE)
@@ -129,8 +130,23 @@ class LargeGaugeTest(unittest.TestCase):
         arc = image.getpixel((math.floor((left + right) / 2 + radius - width / 2), math.floor(y)))  # 3 時: 26% の弧の中
         track = image.getpixel((math.floor((left + right) / 2 - radius + width / 2), math.floor(y)))  # 9 時: 地
         self.assertTrue(all(abs(a - b) <= 2 for a, b in zip(arc, self.LAYOUT.blue)), arc)
-        expected = gauge._mix(gauge.BLUE, gauge.CARD, gauge.TRACK_MIX)
+        expected = gauge._mix(gauge.BLUE, gauge.BACKGROUND, gauge.DARK_TRACK_MIX)
         self.assertTrue(all(abs(a - b) <= 2 for a, b in zip(track, expected)), track)
+
+    def test_cards_are_replaced_by_dividers(self):
+        # カードの面の灰色が 3.5 インチ（黒地）と色が違って見える原因の 1 つだったので、黒地に縦の区切り線にした（2026-10-15）
+        self.assertFalse(self.LAYOUT.cards)
+        self.assertTrue(gauge.layout_for((480, 320)).cards)
+        image = gauge.render(snapshot(26, 74, 93), NOW, size=self.SIZE)
+        left, _top, _right, bottom = gauge.card_box(0, self.LAYOUT)
+        self.assertEqual(image.getpixel((round(left) + 10, round(bottom) - 10)), gauge.BACKGROUND)  # カードの角だった所
+        for x, top, _x, bottom in gauge.dividers(self.LAYOUT):
+            with self.subTest(x=x):
+                self.assertEqual(image.getpixel((int(x), round((top + bottom) / 2))), gauge.CARD)
+                self.assertEqual(image.getpixel((int(x), round(top) - 3)), gauge.BACKGROUND)  # 線はカードと同じ高さだけ
+        small = gauge.render(snapshot(26, 74, 93), NOW)
+        left, _top, _right, bottom = gauge.card_box(0)
+        self.assertEqual(small.getpixel((round(left) + 10, round(bottom) - 10)), gauge.CARD)  # 3.5 インチはカードのまま
 
     def test_content_is_enlarged_and_still_fits(self):
         # 5.2 インチは余白が大きかったので、カードの中身を大きくした（2026-10-13）。3.5 インチは変えない

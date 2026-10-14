@@ -2,6 +2,7 @@
 
 Apple のウィジェット（バッテリー）とアクティビティのリングを手本にした。上端に見出しを置き、
 その下にカード 3 枚を並べて、カードごとに円形のゲージ・使用率・リセット時刻を出す。
+5.2 インチはカードの面を描かず、黒地に縦の区切り線で 3 つに分ける（``Layout.cards``。2026-10-15）。
 
 - 色は Human Interface Guidelines（Color）のダークモードのシステムカラー（2025-06-09 更新の値）
 - 文字の大きさは HIG（Typography）の iOS 既定の文字スタイルの pt を、そのままピクセルで使う。
@@ -47,6 +48,7 @@ BLUE = (0, 145, 255)
 ORANGE = (255, 146, 48)
 RED = (255, 66, 69)
 TRACK_MIX = 0.25  # ゲージの軌道は、ゲージの色をカードの面へ 75% 寄せる
+DARK_TRACK_MIX = 0.22  # 黒地に直接描くときは、ゲージの色を黒へ 78% 寄せる（サーバーの状態の画面と同じ）
 
 # HIG の文字スタイル（iOS 既定の大きさ）
 TITLE1 = 28
@@ -93,6 +95,7 @@ class Layout:
     stamp: int = FOOTNOTE
     quiet_remain: bool = False  # 残り時間を「リセット」の見出しと同じ灰色の小さい字にする
     blue: tuple[int, int, int] = BLUE  # リングの弧の青（地は BLUE から作る）
+    cards: bool = True  # False はカードの面を描かず、黒地に縦の区切り線を引く
 
     @property
     def k(self) -> float:
@@ -130,7 +133,9 @@ class Layout:
 #   3.5 インチでは「薄くて見えない」として白にした（2026-10-09）うえ、12 ピクセルの W3 は「4」の横棒が消えるので変えない
 # - blue: 5.2 インチのパネルでは、3.5 インチと同じ青の弧が暗く見えたので、緑を減らした濃い青にした
 #   （2026-10-15、ユーザーが実機で候補 5 つから選んだ）。5.2 インチは PNG で送るので、RGB565 に落ちない
-LARGE = {(1280, 720): {"content": 1.2, "stamp": 16, "quiet_remain": True, "blue": (0, 105, 255)}}
+# - cards: カードの面の薄い灰色が、3.5 インチのサーバーの状態の画面（黒地）と色が違って見える原因の 1 つだったので、
+#   カードをやめて黒地にし、同じ画面と同じく薄い縦の区切り線を引く（2026-10-15 ユーザーの指示）
+LARGE = {(1280, 720): {"content": 1.2, "stamp": 16, "quiet_remain": True, "blue": (0, 105, 255), "cards": False}}
 
 
 def layout_for(size: tuple[int, int]) -> Layout:
@@ -206,6 +211,16 @@ def card_box(index: int, layout: Layout = Layout()) -> tuple[float, float, float
     return left, layout.px(CARD_TOP), left + layout.card_width, layout.height - layout.px(MARGIN)
 
 
+def dividers(layout: Layout) -> list[tuple[float, float, float, float]]:
+    """カードを描かないときの縦の区切り線（カードの間の中央、カードと同じ高さ）。"""
+    lines = []
+    for index in range(2):
+        _left, top, right, bottom = card_box(index, layout)
+        x = (right + card_box(index + 1, layout)[0]) / 2
+        lines.append((x, top, x, bottom))
+    return lines
+
+
 class _Shapes:
     """図形を拡大して描く下書き。"""
 
@@ -224,11 +239,15 @@ class _Shapes:
     def circle(self, cx, cy, r, fill):
         self.draw.ellipse(self._box(cx - r, cy - r, cx + r, cy + r), fill=fill)
 
-    def ring(self, cx, cy, percent: float | None, radius: float = RING_RADIUS, ring_width: float = RING_WIDTH):
-        """12 時の位置から時計回りに伸びる、端の丸いリング。半径と太さは 3.5 インチでの寸法。"""
+    def ring(self, cx, cy, percent: float | None, radius: float = RING_RADIUS, ring_width: float = RING_WIDTH,
+             surface: tuple[int, int, int] = CARD):
+        """12 時の位置から時計回りに伸びる、端の丸いリング。半径と太さは 3.5 インチでの寸法。
+
+        ``surface`` はリングの下の色（カードの面か黒地）。地はゲージの色をそこへ寄せて作る。
+        """
         radius, ring_width = self.layout.px(radius), self.layout.px(ring_width)
         color = BLUE if percent is None else tint(percent)
-        track = _mix(SECONDARY if percent is None else color, CARD, TRACK_MIX)
+        track = _mix(SECONDARY if percent is None else color, surface, TRACK_MIX if surface == CARD else DARK_TRACK_MIX)
         if color == BLUE:
             color = self.layout.blue
         box = self._box(cx - radius, cy - radius, cx + radius, cy + radius)
@@ -330,17 +349,22 @@ def render(snapshot: Snapshot | None, now: datetime, status: str | None = None,
     centers = []
     for index, meter in enumerate(meters):
         left, top, right, bottom = card_box(index, layout)
-        shapes.rounded_rectangle((left, top, right, bottom), px(CARD_RADIUS), CARD)
+        if layout.cards:
+            shapes.rounded_rectangle((left, top, right, bottom), px(CARD_RADIUS), CARD)
         origin = top + (bottom - top - content_height) / 2
         cx = (left + right) / 2
         percent = None if meter.percent is None else max(0.0, min(100.0, meter.percent))
-        shapes.ring(cx, origin + ring_y, percent, RING_RADIUS * layout.content, RING_WIDTH * layout.content)
+        shapes.ring(cx, origin + ring_y, percent, RING_RADIUS * layout.content, RING_WIDTH * layout.content,
+                    CARD if layout.cards else BACKGROUND)
         centers.append((cx, origin))
     if status:
         shapes.circle(*_badge(layout, HEADER_BASELINE), px(7), ORANGE)
 
     image = shapes.finish()
     draw = ImageDraw.Draw(image)
+    if not layout.cards:
+        for line in dividers(layout):
+            draw.line(line, fill=CARD, width=max(1, round(px(1))))
     _header(image, draw, layout, HEADER_BASELINE, "Claude Code", snapshot, status, (icons or {}).get("claude"),
             layout.stamp)
 

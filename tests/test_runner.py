@@ -213,9 +213,15 @@ class TurzxRunnerTest(unittest.TestCase):
         self.assertEqual(transport.commands()[0], CMD_SYNC)
         sent = Image.open(io.BytesIO(transport.writes[-1][512:])).convert("RGB")
         self.assertEqual(sent.size, (720, 1280))
-        # ゲージ型は 1280×720 で直接描く。横向きの (60, 400) は左のカードの面で、
-        # 時計回りに 90 度回した縦長では (719 - 400, 60) に来る
-        self.assertEqual(sent.getpixel((319, 60)), cli.gauge.CARD)
+        # ゲージ型は 1280×720 で直接描く。横向きの左のリングの 3 時の位置（26% の弧の中）は、
+        # 時計回りに 90 度回した縦長では (719 - y, x) に来る（逆に回すと、0% の右のリングの下の黒地に当たる）
+        layout = cli.gauge.layout_for((1280, 720))
+        _label, ring_y, *_rest, content_height = cli.gauge.content_rows(layout)
+        left, top, right, bottom = cli.gauge.card_box(0, layout)
+        x = int((left + right) / 2 + layout.cpx(cli.gauge.RING_RADIUS) - layout.cpx(cli.gauge.RING_WIDTH) / 2)
+        y = int(top + (bottom - top - content_height) / 2 + ring_y)
+        pixel = sent.getpixel((719 - y, x))
+        self.assertTrue(all(abs(a - b) <= 2 for a, b in zip(pixel, layout.blue)), pixel)
 
     def test_classic_theme_is_letterboxed_on_the_larger_screen(self):
         runner = cli.Runner(make_args(theme="classic"))
