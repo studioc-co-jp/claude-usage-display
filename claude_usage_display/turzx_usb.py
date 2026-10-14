@@ -21,7 +21,13 @@ rev A（``turing.py``）と違い、シリアル（CDC）ではなくベンダ�
   510..511  ``A1 1A``
 応答: 0: 命令番号、1: ``C8``、2..5: 見出しの時刻（リトルエンディアン）
 
-macOS の実機ではまだ確かめていない（2026-10-09 時点。docs/handover.md §5-9）。
+2026-10-15 に macOS の実機（Mac mini M4、USB ハブ経由）で確かめた（docs/handover.md §4-11）。
+
+- パネルの画面は 2 つの層でできている。JPEG（命令 101）は下の層（既定の背景の画像がある層）に描かれ、
+  PNG（命令 102）は上の層に透明度つきで重ねて描かれる。上の層に不透明の PNG があると、JPEG は隠れて見えない
+- **PNG は RGBA で送る。**RGB の PNG を送ると、応答は正常でも正しく読まれず、既定の背景が透けたうえで
+  画像が縦に繰り返して描かれた（ライブラリも RGBA の画像を PNG にして送っている）
+- JPEG を送ったときは、続けて全面が透明の PNG を送ると、JPEG の画面が見える（実機で確かめた順番）
 """
 
 from __future__ import annotations
@@ -94,10 +100,10 @@ def brightness_value(percent: int) -> int:
 
 
 def encode_image(image: Image.Image) -> tuple[int, bytes]:
-    """PNG で送り、1 MiB を超えるときだけ JPEG にする。命令番号と中身を返す。"""
+    """PNG（RGBA）で送り、1 MiB を超えるときだけ JPEG にする。命令番号と中身を返す。"""
     rgb = image.convert("RGB")
     buffer = io.BytesIO()
-    rgb.save(buffer, format="PNG")
+    rgb.convert("RGBA").save(buffer, format="PNG")  # 全面が不透明の RGBA。RGB の PNG はパネルが正しく読まない
     if buffer.tell() <= MAX_PAYLOAD:
         return CMD_PNG, buffer.getvalue()
     for quality in JPEG_QUALITIES:
@@ -106,6 +112,13 @@ def encode_image(image: Image.Image) -> tuple[int, bytes]:
         if buffer.tell() <= MAX_PAYLOAD:
             return CMD_JPEG, buffer.getvalue()
     raise ValueError(f"画像を {MAX_PAYLOAD} バイト以下にできません")
+
+
+def transparent_png(size: tuple[int, int]) -> bytes:
+    """全面が透明の PNG。上の層を消し、下の層の JPEG を見せるのに使う。"""
+    buffer = io.BytesIO()
+    Image.new("RGBA", size, (0, 0, 0, 0)).save(buffer, format="PNG")
+    return buffer.getvalue()
 
 
 class TurzxUsbTransport:
@@ -188,6 +201,7 @@ class TurzxUsb:
         """``portrait`` は縦置き（本来の向きのまま送る。``flipped`` で 180 度回す。実機では未確認）。"""
         self.transport = transport
         self.name, native_width, native_height = MODELS[pid]
+        self.native_size = (native_width, native_height)
         if portrait:
             self.width, self.height = native_width, native_height
             self.rotation = Image.Transpose.ROTATE_180 if flipped else None
@@ -218,6 +232,9 @@ class TurzxUsb:
             raise ValueError(f"画像の大きさが合いません: {image.size}")
         command, data = encode_image(image if self.rotation is None else image.transpose(self.rotation))
         self._exchange(command, struct.pack(">I", len(data)), data)
+        if command == CMD_JPEG:  # JPEG は下の層に描かれ、前に送った PNG に隠れるので、上の層を透明にする
+            clear = transparent_png(self.native_size)
+            self._exchange(CMD_PNG, struct.pack(">I", len(clear)), clear)
 
     def close(self) -> None:
         self.transport.close()

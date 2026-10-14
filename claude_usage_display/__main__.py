@@ -190,6 +190,8 @@ def cmd_probe(args) -> int:
     if not found:
         print("対応している ID の機器がありません")
         return 1
+    failed = False
+    # 2 台をつないでいると、片方はもう一方の常駐が使っていて確保できない。それでも残りの機器を確かめる
     for vid, pid in sorted(found):
         try:
             if vid == TURZX_VID:
@@ -199,8 +201,8 @@ def cmd_probe(args) -> int:
             print(f"{known[(vid, pid)]}: インターフェースを確保できました")
         except Exception as e:  # noqa: BLE001 - 原因をそのまま見せる
             print(f"{known[(vid, pid)]}: インターフェースを確保できません: {e!r}")
-            return 1
-    return 0
+            failed = True
+    return 1 if failed else 0
 
 
 def cmd_test_pattern(args) -> int:

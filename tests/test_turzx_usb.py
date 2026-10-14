@@ -22,6 +22,7 @@ from claude_usage_display.turzx_usb import (
     encode_header,
     encode_image,
     milliseconds_since_midnight,
+    transparent_png,
 )
 
 TIMESTAMP = 3_723_004  # 01:02:03.004
@@ -102,10 +103,17 @@ class HeaderTest(unittest.TestCase):
 
 
 class EncodeImageTest(unittest.TestCase):
-    def test_flat_image_is_png(self):
+    def test_flat_image_is_opaque_rgba_png(self):
+        # パネルは PNG を透明度つきで重ねる。RGB の PNG は正しく読まれず、既定の背景が透けた（2026-10-15 実機）
         command, data = encode_image(Image.new("RGB", (720, 1280), (33, 32, 33)))
         self.assertEqual(command, CMD_PNG)
-        self.assertEqual(Image.open(io.BytesIO(data)).format, "PNG")
+        png = Image.open(io.BytesIO(data))
+        self.assertEqual((png.format, png.mode), ("PNG", "RGBA"))
+        self.assertEqual(png.getextrema()[3], (255, 255))
+
+    def test_transparent_png(self):
+        png = Image.open(io.BytesIO(transparent_png((720, 1280))))
+        self.assertEqual((png.size, png.mode, png.getextrema()[3]), ((720, 1280), "RGBA", (0, 0)))
 
     def test_falls_back_to_jpeg_under_the_limit(self):
         noise = Image.frombytes("RGB", (720, 1280), random.Random(1).randbytes(720 * 1280 * 3))
@@ -159,6 +167,14 @@ class TurzxUsbTest(unittest.TestCase):
         display.show(image)
         sent = Image.open(io.BytesIO(transport.writes[-1][512:])).convert("RGB")
         self.assertEqual((sent.size, sent.getpixel((0, 0))), ((720, 1280), (255, 0, 0)))
+
+    def test_jpeg_is_followed_by_a_transparent_png(self):
+        # JPEG は下の層に描かれ、前の PNG に隠れる。透明の PNG で上の層を消すと見える（2026-10-15 実機）
+        noise = Image.frombytes("RGB", (1280, 720), random.Random(1).randbytes(1280 * 720 * 3))
+        self.display.show(noise)
+        self.assertEqual(self.transport.commands(), [CMD_JPEG, CMD_PNG])
+        clear = Image.open(io.BytesIO(self.transport.writes[-1][512:]))
+        self.assertEqual((clear.size, clear.getextrema()[3]), ((720, 1280), (0, 0)))
 
     def test_wrong_size_is_rejected_before_sending(self):
         with self.assertRaises(ValueError):
