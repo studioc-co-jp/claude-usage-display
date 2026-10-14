@@ -110,12 +110,27 @@ class LargeGaugeTest(unittest.TestCase):
         image = gauge.render(snapshot(26, 74, 93), NOW, size=self.SIZE)
         _label, ring_y, *_rest, content_height = gauge.content_rows(self.LAYOUT)
         radius, width = self.LAYOUT.cpx(gauge.RING_RADIUS), self.LAYOUT.cpx(gauge.RING_WIDTH)
-        for index, expected in enumerate((gauge.BLUE, gauge.ORANGE, gauge.RED)):
+        for index, expected in enumerate((self.LAYOUT.blue, gauge.ORANGE, gauge.RED)):
             left, top, right, bottom = gauge.card_box(index, self.LAYOUT)
             x, y = (left + right) / 2 + radius - width / 2, top + (bottom - top - content_height) / 2 + ring_y
             pixel = image.getpixel((math.floor(x), math.floor(y)))
             with self.subTest(index=index):
                 self.assertTrue(all(abs(a - b) <= 12 for a, b in zip(pixel, expected)), pixel)
+
+    def test_arc_blue_is_deeper_but_track_is_unchanged(self):
+        # 5.2 インチのパネルでは 3.5 インチと同じ青の弧が暗く見えたので、弧だけ濃い青にした（2026-10-15）。3.5 インチは変えない
+        self.assertEqual(self.LAYOUT.blue, (0, 105, 255))
+        self.assertEqual(gauge.layout_for((480, 320)).blue, gauge.BLUE)
+        image = gauge.render(snapshot(26, 74, 93), NOW, size=self.SIZE)
+        _label, ring_y, *_rest, content_height = gauge.content_rows(self.LAYOUT)
+        radius, width = self.LAYOUT.cpx(gauge.RING_RADIUS), self.LAYOUT.cpx(gauge.RING_WIDTH)
+        left, top, right, bottom = gauge.card_box(0, self.LAYOUT)
+        y = top + (bottom - top - content_height) / 2 + ring_y
+        arc = image.getpixel((math.floor((left + right) / 2 + radius - width / 2), math.floor(y)))  # 3 時: 26% の弧の中
+        track = image.getpixel((math.floor((left + right) / 2 - radius + width / 2), math.floor(y)))  # 9 時: 地
+        self.assertTrue(all(abs(a - b) <= 2 for a, b in zip(arc, self.LAYOUT.blue)), arc)
+        expected = gauge._mix(gauge.BLUE, gauge.CARD, gauge.TRACK_MIX)
+        self.assertTrue(all(abs(a - b) <= 2 for a, b in zip(track, expected)), track)
 
     def test_content_is_enlarged_and_still_fits(self):
         # 5.2 インチは余白が大きかったので、カードの中身を大きくした（2026-10-13）。3.5 インチは変えない
@@ -199,7 +214,7 @@ class GeminiGaugeTest(unittest.TestCase):
 
     def test_lower_rings_follow_severity(self):
         image = gauge.render_with_gemini(snapshot(26, 74, 93), gemini(12, 92), NOW, size=self.SIZE)
-        for index, expected in enumerate((gauge.BLUE, gauge.RED)):
+        for index, expected in enumerate((gauge.layout_for(self.SIZE).blue, gauge.RED)):
             with self.subTest(index=index):
                 self.assertTrue(near(image.getpixel(self.lower_ring_top(index)), expected))
 

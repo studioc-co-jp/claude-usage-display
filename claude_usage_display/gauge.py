@@ -92,6 +92,7 @@ class Layout:
     content: float = 1.0
     stamp: int = FOOTNOTE
     quiet_remain: bool = False  # 残り時間を「リセット」の見出しと同じ灰色の小さい字にする
+    blue: tuple[int, int, int] = BLUE  # リングの弧の青（地は BLUE から作る）
 
     @property
     def k(self) -> float:
@@ -127,7 +128,9 @@ class Layout:
 # - stamp: 3.5 インチのサーバー監視の画面（縦置き）の名前 15・時刻 16 と同じ比にする（2026-10-13 ユーザーの指示）
 # - quiet_remain: 「あと…」を「リセット」の見出しと同じ書き方にする（2026-10-13、ユーザーが見本の 2 案から選んだ）。
 #   3.5 インチでは「薄くて見えない」として白にした（2026-10-09）うえ、12 ピクセルの W3 は「4」の横棒が消えるので変えない
-LARGE = {(1280, 720): {"content": 1.2, "stamp": 16, "quiet_remain": True}}
+# - blue: 5.2 インチのパネルでは、3.5 インチと同じ青の弧が暗く見えたので、緑を減らした濃い青にした
+#   （2026-10-15、ユーザーが実機で候補 5 つから選んだ）。5.2 インチは PNG で送るので、RGB565 に落ちない
+LARGE = {(1280, 720): {"content": 1.2, "stamp": 16, "quiet_remain": True, "blue": (0, 105, 255)}}
 
 
 def layout_for(size: tuple[int, int]) -> Layout:
@@ -226,6 +229,8 @@ class _Shapes:
         radius, ring_width = self.layout.px(radius), self.layout.px(ring_width)
         color = BLUE if percent is None else tint(percent)
         track = _mix(SECONDARY if percent is None else color, CARD, TRACK_MIX)
+        if color == BLUE:
+            color = self.layout.blue
         box = self._box(cx - radius, cy - radius, cx + radius, cy + radius)
         width = round(ring_width * self.scale)
         self.draw.ellipse(box, outline=track, width=width)
