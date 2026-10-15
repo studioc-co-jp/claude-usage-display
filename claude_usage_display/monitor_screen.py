@@ -60,8 +60,12 @@ class _Layout:
 
 
 LANDSCAPE = _Layout(
-    size=(480, 320), inset=20, title_baseline=25, pill=(116, 6, 364, 32), status_baseline=25, dot_y=20,
-    status_size=13, alert_size=15, dot_radius=4.5, stamp_size=13, tall_pill=None, tall_baselines=None,
+    # 監視の状態・帯の中のアラート・右上の時刻を、実機を見たユーザーの指示で縦置きと同じ大きさにした（2026-10-15。
+    # 文言 13→18・点の半径 4.5→6・アラート 15→18・時刻 13→16。帯は 6〜32 → 4〜34）。見出しは 1 行のまま
+    # （ユーザーが見本で選んだ）。帯の幅は変えていないので、長いアラートは帯に合わせて縮む。
+    # 時刻（「00:00 更新」の幅 84）の左端は 376 で、帯の右端（364）との間は 12 ピクセル
+    size=(480, 320), inset=20, title_baseline=25, pill=(116, 4, 364, 34), status_baseline=25, dot_y=18.5,
+    status_size=18, alert_size=18, dot_radius=6, stamp_size=16, tall_pill=None, tall_baselines=None,
     # 数字をリングの中に入れ、名前としきい値をリングの右で縦の中ほどに置く（2026-10-15、ユーザーが見本で選んだ）。
     # 名前・しきい値は縦置きと同じ大きさ（18・14）。左の列の「しきい値 80%」（幅 92）の右端は 238 で、
     # 区切り線（240）の 2 ピクセル手前。しきい値は 2 桁の整数まで収まる

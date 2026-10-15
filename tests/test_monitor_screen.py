@@ -47,6 +47,11 @@ class MonitorScreenTest(unittest.TestCase):
                  for y in range(round(label_y + 2), round(threshold_y - threshold_size))]
         self.assertTrue(all(p == BACKGROUND for p in right))
 
+    def test_landscape_stamp_stays_right_of_the_pill(self):
+        # 2026-10-15 に時刻を 13→16 ピクセルにした。帯（アラートの白い地）に時刻がかからない
+        start = 480 - ms.LANDSCAPE.inset - font(ms.LANDSCAPE.stamp_size, SMALL_WEIGHT).getlength("00:00 更新")
+        self.assertGreater(start, ms.LANDSCAPE.pill[2])
+
     def test_landscape_threshold_stays_left_of_the_divider(self):
         threshold_x, _, _, threshold_size = ms.LANDSCAPE.threshold
         end = ms.LANDSCAPE.cells[0][0] + threshold_x + font(threshold_size, SMALL_WEIGHT).getlength("しきい値 85%")
