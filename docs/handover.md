@@ -371,6 +371,7 @@ scripts/uninstall-launch-agent.sh                                 # 自動起動
   - TimeMachineEditor の「Last run」は、成功したときだけ更新される（`/Library/Logs/TimeMachineEditor/scheduler.log`。10/15 の夜中の 5 回の失敗の間は 10/14 9:19 のままで、8:35 に更新された）。失敗した試行は「Last try」
   - 熱の段階は、公開ヘッダー `libkern/OSThermalNotification.h` の通知（`kOSThermalNotificationPressureLevelName`）で読む。macOS の値は 0 Nominal・1 Moderate・2 Heavy・3 Trapping・4 Sleeping で、2 から見出しに出す（Moderate で出すかは決めていなかったので、性能の制限がはっきり起きている Heavy からにした）。バックアップが古いとみなすのは 36 時間（毎日のバックアップが 1 回抜けたら気付けるように）。この 2 つはユーザーに確かめていない値で、README に書いた
   - テストは 165 件すべて通過（足したのは、`tests/test_local_monitor.py` の 13 件、描画 3 件、USB の位置 1 件、常駐 2 件、引数 1 件）
+  - launchd から `local --preview` を 1 回だけ動かして確かめた（18:08。確かめ用の LaunchAgent は、終わってから外した）。Time Machine の設定ファイルは `PermissionError` で読めず、`tmectl info` の時刻（8:35）が見出しに出た。`run`・`monitor` の常駐も新しいコードで起動し直し、どちらも接続を待つ状態で動いている（新しいモジュールは起動時に読み込まれるため）
   - 実機ではまだ表示していない。2026-10-15 17:31 に 2 台のディスプレイ（3.5 インチと 5.2 インチ）がどちらも USB から外れ（ログ「ディスプレイが外れました」）、実装を終えた時点でもつながっていなかったため
 
 ## 5. 残っている作業（上から順に）
