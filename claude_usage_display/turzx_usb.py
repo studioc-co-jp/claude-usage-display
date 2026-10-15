@@ -114,11 +114,15 @@ def encode_image(image: Image.Image) -> tuple[int, bytes]:
     raise ValueError(f"画像を {MAX_PAYLOAD} バイト以下にできません")
 
 
+def solid_png(size: tuple[int, int], rgba: tuple[int, int, int, int]) -> bytes:
+    buffer = io.BytesIO()
+    Image.new("RGBA", size, rgba).save(buffer, format="PNG")
+    return buffer.getvalue()
+
+
 def transparent_png(size: tuple[int, int]) -> bytes:
     """全面が透明の PNG。上の層を消し、下の層の JPEG を見せるのに使う。"""
-    buffer = io.BytesIO()
-    Image.new("RGBA", size, (0, 0, 0, 0)).save(buffer, format="PNG")
-    return buffer.getvalue()
+    return solid_png(size, (0, 0, 0, 0))
 
 
 class TurzxUsbTransport:
@@ -235,6 +239,19 @@ class TurzxUsb:
         if command == CMD_JPEG:  # JPEG は下の層に描かれ、前に送った PNG に隠れるので、上の層を透明にする
             clear = transparent_png(self.native_size)
             self._exchange(CMD_PNG, struct.pack(">I", len(clear)), clear)
+
+    def blank(self) -> None:
+        """黒一色の不透明の PNG を送り、明るさを 0 にする（消す命令は無い。2026-10-15 に実機で真っ暗になることを確かめた）。
+
+        黒の JPEG は下の層に描かれ、前に送った PNG に隠れるので使わない（token-dashboard は JPEG で消している）。
+        """
+        black = solid_png(self.native_size, (0, 0, 0, 255))
+        self._exchange(CMD_PNG, struct.pack(">I", len(black)), black)
+        self.set_brightness(0)
+
+    def unblank(self, brightness: int) -> None:
+        """明るさを戻す。表示は呼び出し側が送り直す。"""
+        self.set_brightness(brightness)
 
     def close(self) -> None:
         self.transport.close()

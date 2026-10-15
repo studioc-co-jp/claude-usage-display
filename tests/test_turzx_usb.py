@@ -176,6 +176,15 @@ class TurzxUsbTest(unittest.TestCase):
         clear = Image.open(io.BytesIO(self.transport.writes[-1][512:]))
         self.assertEqual((clear.size, clear.getextrema()[3]), ((720, 1280), (0, 0)))
 
+    def test_blank_sends_opaque_black_png_then_zero_brightness(self):
+        # 黒の JPEG は前の PNG に隠れるので、不透明の黒の PNG で覆い、明るさを 0 にする（2026-10-15 実機で真っ暗）
+        self.display.blank()
+        self.display.unblank(brightness=40)
+        self.assertEqual(self.transport.commands(), [CMD_PNG, CMD_BRIGHTNESS, CMD_BRIGHTNESS])
+        black = Image.open(io.BytesIO(self.transport.writes[0][512:]))
+        self.assertEqual((black.size, black.mode, black.getextrema()), ((720, 1280), "RGBA", ((0, 0), (0, 0), (0, 0), (255, 255))))
+        self.assertEqual([decrypt(w)[8] for w in self.transport.writes[1:]], [0, brightness_value(40)])
+
     def test_wrong_size_is_rejected_before_sending(self):
         with self.assertRaises(ValueError):
             self.display.show(Image.new("RGB", (480, 320)))

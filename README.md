@@ -140,6 +140,7 @@ python3 -m venv .venv
 | `--gemini-interval 秒` | `run` | 900 | Gemini の枠を取得する間隔（300 以上） |
 | `--agy パス` | `preview`・`run` | 自動 | Antigravity の CLI（`agy`）の場所。既定は PATH と `/opt/homebrew/bin`・`/usr/local/bin` から探す |
 | `--icons フォルダ` | `preview`・`run` | なし | 見出しの左に出すアイコン（`claude.png`・`gemini.png`）を置いたフォルダ |
+| `--away-minutes 分` | `run`・`monitor` | 10 | キーボード・マウスをこの分数触らなければ消灯する（焼き付き対策。0 で消灯しない。「席を離れている間の消灯」を参照） |
 
 モデル別の週次上限は、既定で Fable のものを出します。別のモデルの上限を出すときは、コマンドの前に `--model` を付けます（例: `.venv/bin/python -m claude_usage_display --model Opus run`）。その上限が無いプランでは、値の代わりに「--」（横棒の画面では「—」）が出ます。
 
@@ -168,6 +169,16 @@ scripts/uninstall-launch-agent.sh          # 解除
 launchctl print gui/$(id -u)/jp.co.studioc.claude-usage-display | grep -E "^$(printf '\t')(state|pid|last exit code) ="
 tail -f ~/Library/Logs/claude-usage-display.log
 ```
+
+## 席を離れている間の消灯（焼き付き対策）
+
+キーボードとマウスを 10 分触らないと、ディスプレイを消します（`--away-minutes` で分数を変えられます。0 で消しません）。触ると、5 秒以内に点き直します。
+
+- 3.5 インチは画面を消す命令（`SCREEN_OFF`）で、5.2 インチは黒一色の画像と明るさ 0 で消します。5.2 インチは、黒の JPEG では前の PNG に隠れて消えません（「仕組み」を参照）
+- 利用枠の画面は、消えている間は利用枠の API を呼びません。点き直したときに取得し直します
+- サーバーの状態の画面は、消えている間も取得を続け、画面全体が赤になる異常のときは点けて赤を出します。席に戻ったときに異常に気付けるようにするためです
+- 触らない時間は、macOS の `ioreg` の `HIDIdleTime`（キーボード・マウスを最後に触ってからの時間）で読みます。Mac の画面が消えたかどうかでは判定しません。CoreGraphics（`CGDisplayIsAsleep`）で問い合わせる方法は WindowServer に接続することになり、試した直後に Mac がフリーズしたためです（原因はセキュリティソフトと macOS の `trustd` の行き詰まりで、問い合わせとの関係は確定しませんでした）。Mac の画面が消えるまでの時間（`pmset -g` の `displaysleep`）に合わせておけば、ほぼ同じ時に消えます（既定の 10 分は、作者の Mac の設定に合わせたもの）
+- [token-dashboard](https://github.com/nuitsjp/token-dashboard) の焼き付き対策（2026-10-12 の PR #42）を参考にしました。token-dashboard は、席を離れている間の消灯に加えて、画像全体を 3 分ごとに縦横 4 ピクセルの範囲でずらします。このプログラムはずらしを入れていません。液晶の残像は、同じ表示を長く続けると液晶の中にイオンがたまって直流の電圧が残るために起き、使わないときに消すかスクリーンセーバーを使うのが対策として挙げられている（[Apple](https://support.apple.com/en-hk/100952)、[Orient Display](https://www.orientdisplay.com/?p=414321)）一方で、4 ピクセルずらしても表示が変わるのは色の境目から 4 ピクセル以内の画素だけで、黒地やリングの内側はそのまま光り続けるためです。ずらすと、画面の端との余白も ±4 ピクセル変わります
 
 ## Antigravity の Gemini の枠も出す
 

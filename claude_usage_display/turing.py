@@ -201,5 +201,14 @@ class TuringRevA:
             raise ValueError(f"画像の大きさが合いません: {image.size}")
         self.show_frame(to_rgb565le(image))
 
+    def blank(self) -> None:
+        """画面を消す（SCREEN_OFF。バックライトも消えることを 2026-10-15 に実機で確かめた）。"""
+        self.transport.write(encode_command(Command.SCREEN_OFF))
+
+    def unblank(self, brightness: int) -> None:
+        """画面を点ける。表示は呼び出し側が送り直す。"""
+        self.transport.write(encode_command(Command.SCREEN_ON))
+        self.set_brightness(brightness)
+
     def close(self) -> None:
         self.transport.close()

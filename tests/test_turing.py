@@ -86,6 +86,12 @@ class TuringRevATest(unittest.TestCase):
         self.assertEqual(writes[-2], encode_orientation(Orientation.LANDSCAPE))
         self.assertEqual(writes[-1], encode_command(Command.SET_BRIGHTNESS, 178))
 
+    def test_blank_turns_the_screen_off_and_unblank_turns_it_back_on(self):
+        self.display.blank()
+        self.display.unblank(brightness=25)
+        self.assertEqual(self.transport.writes, [encode_command(Command.SCREEN_OFF), encode_command(Command.SCREEN_ON),
+                                                 encode_command(Command.SET_BRIGHTNESS, brightness_level(25))])
+
     def test_wrong_size_is_rejected_before_sending(self):
         with self.assertRaises(ValueError):
             self.display.show(Image.new("RGB", (320, 480)))

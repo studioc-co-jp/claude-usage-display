@@ -29,6 +29,7 @@ from PIL import Image
 from . import gauge, monitor_screen, render
 from .antigravity import LABELS as GEMINI_LABELS
 from .antigravity import AntigravityError, AntigravityReader
+from .presence import DEFAULT_AWAY_MINUTES, POLL_SECONDS, Presence
 from .render import render_test_pattern
 from .server_monitor import (AwsReader, ConfigError, FetchError, Incident, MetricValue, MonitorState, ServerStatus,
                              assess, load_config)
@@ -228,7 +229,63 @@ def _duration(elapsed: timedelta) -> str:
     return f"{minutes} 分 {seconds} 秒" if minutes else f"{seconds} 秒"
 
 
-class Runner:
+class _Resident:
+    """2 つの常駐の共通部分: ディスプレイへの操作の失敗の扱いと、席を離れている間の消灯（焼き付き対策）。"""
+
+    def _setup_presence(self) -> None:
+        self.presence = Presence(getattr(self.args, "away_minutes", 0))
+        self.blanked = False
+
+    def _operate(self, action) -> bool:
+        """ディスプレイへの操作。失敗したら閉じて、接続を待つ状態に戻す。"""
+        try:
+            action()
+            return True
+        except Exception as e:  # noqa: BLE001
+            if is_disconnected(e):  # 抜いただけなので、トレースバックは残さない
+                log.warning("ディスプレイが外れました。接続を待ちます")
+            else:
+                log.exception("送信に失敗しました。接続し直します")
+            Runner._close(self.display)
+            self.display = None
+            return False
+
+    def _blank(self) -> bool:
+        if self.blanked:
+            return True
+        if not self._operate(self.display.blank):
+            return False
+        log.info("席を離れたので消灯しました（無操作 %g 分）", self.presence.away_after / 60)
+        self.blanked = True
+        return True
+
+    def _unblank(self, reason: str) -> bool:
+        if not self.blanked:
+            return True
+        if not self._operate(lambda: self.display.unblank(self.args.brightness)):
+            return False
+        log.info("%sので点灯しました", reason)
+        self.blanked = False
+        self.last_frame = None  # 送り直す
+        return True
+
+    def _wait(self, seconds: float, wake=None) -> None:
+        """``seconds`` 待つ。消灯を使うときは、その間も ``wake``（既定は席を離れたか）を確かめ、真になったら待つのをやめる。"""
+        if not self.presence.enabled:
+            self.stop.wait(seconds)
+            return
+        wake = wake or self.presence.away
+        end = time.monotonic() + seconds
+        while not self.stop.is_set():
+            left = end - time.monotonic()
+            if left <= 0:
+                return
+            self.stop.wait(min(left, POLL_SECONDS))
+            if wake():
+                return
+
+
+class Runner(_Resident):
     def __init__(self, args):
         self.args = args
         self.stop = threading.Event()
@@ -246,6 +303,7 @@ class Runner:
         self.gemini: Snapshot | None = None
         self.gemini_status: str | None = None
         self.next_gemini = 0.0
+        self._setup_presence()
 
     def request_stop(self, signum, _frame) -> None:
         # 送信中に止めるとパネルの同期が崩れるため、ここでは合図だけ立てる
@@ -277,6 +335,7 @@ class Runner:
         self.last_frame = None
         self.waiting_logged = False
         self.open_error = None
+        self.blanked = False  # 初期化で明るさが戻っている
         return True
 
     @staticmethod
@@ -348,25 +407,24 @@ class Runner:
             if self.display is None and not self._connect():
                 self.stop.wait(DEVICE_RETRY_SECONDS)
                 continue
+            if self.presence.away():
+                # 席を離れている間は、取得も描き直しもしない。戻ったら、止まっていた取得から始める
+                if self._blank():
+                    self.stop.wait(POLL_SECONDS)
+                continue
+            if not self._unblank("操作が戻った"):
+                continue
             self._fetch_if_due()
             self._fetch_gemini_if_due()
             image = self._draw((self.display.width, self.display.height))
             frame = image.tobytes()
             if frame != self.last_frame:
-                try:
-                    self.display.show(image)
-                    self.last_frame = frame
-                    if self.args.save_png:
-                        image.save(self.args.save_png)
-                except Exception as e:  # noqa: BLE001
-                    if is_disconnected(e):  # 抜いただけなので、トレースバックは残さない
-                        log.warning("ディスプレイが外れました。接続を待ちます")
-                    else:
-                        log.exception("送信に失敗しました。接続し直します")
-                    self._close(self.display)
-                    self.display = None
+                if not self._operate(lambda: self.display.show(image)):
                     continue
-            self.stop.wait(self._seconds_to_wait())
+                self.last_frame = frame
+                if self.args.save_png:
+                    image.save(self.args.save_png)
+            self._wait(self._seconds_to_wait())
         if self.display is not None:
             self._close(self.display)
         log.info("終了しました")
@@ -388,8 +446,12 @@ def _demo_server_status(config, now: datetime, case: str) -> ServerStatus:
     return ServerStatus(metrics, MonitorState(incidents, now - timedelta(seconds=30)), now)
 
 
-class MonitorRunner:
-    """サーバーの状態を ``interval`` 秒ごとに取得し、変わったときだけ送る。"""
+class MonitorRunner(_Resident):
+    """サーバーの状態を ``interval`` 秒ごとに取得し、変わったときだけ送る。
+
+    席を離れている間は消灯するが、取得は続け、画面全体が赤になる異常のときは点灯して赤を出す
+    （戻ったときに異常に気付けるように。2026-10-15 ユーザーが決定）。
+    """
 
     def __init__(self, args, config, reader=None):
         self.args = args
@@ -403,6 +465,9 @@ class MonitorRunner:
         self.warnings: tuple[str, ...] = ()
         self.last_frame: bytes | None = None
         self.waiting_logged = False
+        self.assessment = None
+        self.next_fetch = 0.0
+        self._setup_presence()
 
     def request_stop(self, signum, _frame) -> None:
         log.info("終了の合図を受けました（%s）", signal.Signals(signum).name)
@@ -422,6 +487,7 @@ class MonitorRunner:
             return False
         log.info("ディスプレイに接続しました")
         self.display, self.last_frame, self.waiting_logged = display, None, False
+        self.blanked = False  # 初期化で明るさが戻っている
         return True
 
     def fetch(self) -> None:
@@ -453,22 +519,26 @@ class MonitorRunner:
             if self.display is None and not self._connect():
                 self.stop.wait(DEVICE_RETRY_SECONDS)
                 continue
-            assessment = self.fetch()
-            image = monitor_screen.render(self.status, assessment, self.config, self.error, portrait=self.args.portrait)
+            if time.monotonic() >= self.next_fetch:
+                self.assessment = self.fetch()
+                self.next_fetch = time.monotonic() + self.args.interval
+            red = self.assessment is not None and self.assessment.red
+            away = self.presence.away()
+            if away and not red:
+                if self._blank():
+                    self.stop.wait(min(POLL_SECONDS, max(0.0, self.next_fetch - time.monotonic())))
+                continue
+            if not self._unblank("異常が起きた（席を離れています）" if away else "操作が戻った"):
+                continue
+            image = monitor_screen.render(self.status, self.assessment, self.config, self.error,
+                                          portrait=self.args.portrait)
             frame = image.tobytes()
             if frame != self.last_frame:
-                try:
-                    self.display.show(image)
-                    self.last_frame = frame
-                except Exception as e:  # noqa: BLE001
-                    if is_disconnected(e):
-                        log.warning("ディスプレイが外れました。接続を待ちます")
-                    else:
-                        log.exception("送信に失敗しました。接続し直します")
-                    Runner._close(self.display)
-                    self.display = None
+                if not self._operate(lambda: self.display.show(image)):
                     continue
-            self.stop.wait(self.args.interval)
+                self.last_frame = frame
+            # 赤を出している間は、席を離れていても待つ（次の取得で異常が解けていれば消灯する）
+            self._wait(max(0.0, self.next_fetch - time.monotonic()), wake=lambda: not red and self.presence.away())
         if self.display is not None:
             Runner._close(self.display)
         log.info("終了しました")
@@ -551,6 +621,9 @@ def main(argv: list[str] | None = None) -> int:
             add_gemini_options(p)
             p.add_argument("--gemini-interval", type=int, default=900,
                            help="Gemini の取得の間隔（秒、既定: 900。agy の実行に約 6 秒かかるため長めにする）")
+        if name in ("run", "monitor"):
+            p.add_argument("--away-minutes", type=int, default=DEFAULT_AWAY_MINUTES,
+                           help=f"キーボード・マウスをこの分数触らなければ消灯する（焼き付き対策。既定: {DEFAULT_AWAY_MINUTES}。0 で消灯しない）")
         if name in ("test-pattern", "monitor"):
             p.add_argument("--portrait", action="store_true", help="縦置き（320×480）で出す")
         if name == "monitor":
@@ -569,6 +642,8 @@ def main(argv: list[str] | None = None) -> int:
         parser.error("--gemini はゲージ型の画面（--theme gauge）で使ってください")
     if getattr(args, "demo", None) and args.command == "monitor" and not args.preview:
         parser.error("monitor の --demo は --preview と一緒に使ってください")
+    if not 0 <= getattr(args, "away_minutes", 0) <= 1440:
+        parser.error("--away-minutes は 0〜1440 にしてください")
     # 範囲外の値は接続した時点で初めて失敗し、run が初期化を繰り返し続けるため、ここで止める
     if not 0 <= getattr(args, "brightness", 0) <= 100:
         parser.error("--brightness は 0〜100 にしてください")

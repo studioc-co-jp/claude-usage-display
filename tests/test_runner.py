@@ -284,6 +284,94 @@ class FitToTest(unittest.TestCase):
         self.assertEqual(fitted.getbbox(), (100, 0, 1180, 720))
 
 
+class FakePresence:
+    """席を離れているかを、決めた順に答える。"""
+
+    enabled = True
+    away_after = 600
+
+    def __init__(self, answers):
+        self.answers = list(answers)
+
+    def away(self):
+        return self.answers.pop(0) if len(self.answers) > 1 else self.answers[0]
+
+
+class RecordingDisplay:
+    def __init__(self, on_show=None):
+        self.calls = []
+        self.on_show = on_show
+        self.width, self.height = 480, 320
+
+    def initialize(self, brightness):
+        self.calls.append("initialize")
+
+    def blank(self):
+        self.calls.append("blank")
+
+    def unblank(self, brightness):
+        self.calls.append(f"unblank {brightness}")
+
+    def show(self, image):
+        self.calls.append("show")
+        if self.on_show:
+            self.on_show(image)
+
+    def close(self):
+        pass
+
+
+class AwayTest(unittest.TestCase):
+    """席を離れている間の消灯（焼き付き対策。2026-10-15）。"""
+
+    def setUp(self):
+        patcher = mock.patch.object(cli, "POLL_SECONDS", 0)
+        patcher.start()
+        self.addCleanup(patcher.stop)
+
+    def test_usage_screen_stops_fetching_while_away_and_redraws_when_back(self):
+        runner = cli.Runner(make_args(brightness=40))
+        runner.presence = FakePresence([True, True, False])
+        display = RecordingDisplay(on_show=lambda image: runner.stop.set())
+        with mock.patch.object(cli, "open_display", return_value=display), \
+                mock.patch.object(cli, "fetch_snapshot", return_value=snapshot()) as fetch, \
+                self.assertLogs(cli.log, "INFO") as logs:
+            runner.loop()
+        self.assertEqual(display.calls, ["initialize", "blank", "unblank 40", "show"])
+        fetch.assert_called_once()  # 離れている間は取得しない
+        messages = [r.getMessage() for r in logs.records]
+        self.assertIn("席を離れたので消灯しました（無操作 10 分）", messages)
+        self.assertIn("操作が戻ったので点灯しました", messages)
+
+    def test_server_screen_lights_up_only_for_a_red_alert_while_away(self):
+        from tests.test_server_monitor import config, status
+
+        runner = cli.MonitorRunner(argparse.Namespace(flip=False, device="3.5", brightness=25, interval=0, portrait=False),
+                                   config(), reader=mock.Mock())
+        runner.presence = FakePresence([True])
+        statuses = iter([status(), status(values=(92, 61, 47, 3)), status()])
+
+        def fetch():
+            value = next(statuses, None)
+            if value is None:
+                runner.stop.set()
+                return last
+            return value
+
+        last = status()
+        runner.reader.fetch.side_effect = fetch
+        shown = []
+        display = RecordingDisplay(on_show=lambda image: shown.append(image.getpixel((2, 300))))
+        now = last.fetched_at
+        with mock.patch.object(cli, "open_display", return_value=display), \
+                mock.patch.object(cli, "datetime", mock.Mock(wraps=datetime, now=lambda tz=None: now)), \
+                self.assertLogs(cli.log, "INFO") as logs:
+            runner.loop()
+        self.assertEqual(display.calls, ["initialize", "blank", "unblank 25", "show", "blank"])
+        self.assertEqual(shown, [cli.gauge.RED])
+        self.assertIn("異常が起きた（席を離れています）ので点灯しました", [r.getMessage() for r in logs.records])
+
+
 class ArgumentsTest(unittest.TestCase):
     def setUp(self):
         # main() はログの出力先を設定する。後に続くテストの出力にログが混ざらないよう止める
@@ -295,7 +383,8 @@ class ArgumentsTest(unittest.TestCase):
         for argv in (["run", "--brightness", "101"], ["run", "--brightness", "-1"],
                      ["test-pattern", "--brightness", "101"], ["run", "--interval", "59"],
                      ["run", "--theme", "unknown"], ["run", "--gemini-interval", "299"],
-                     ["run", "--gemini", "--theme", "classic"], ["preview", "--gemini", "--theme", "classic"]):
+                     ["run", "--gemini", "--theme", "classic"], ["preview", "--gemini", "--theme", "classic"],
+                     ["run", "--away-minutes", "-1"], ["run", "--away-minutes", "1441"]):
             with self.subTest(argv=argv), mock.patch.object(cli, "cmd_run") as run, \
                     mock.patch.object(cli, "cmd_test_pattern") as test_pattern, mock.patch("sys.stderr"):
                 with self.assertRaises(SystemExit) as raised:
@@ -309,6 +398,14 @@ class ArgumentsTest(unittest.TestCase):
             with self.subTest(value=value), mock.patch.object(cli, "cmd_run", return_value=0) as run:
                 self.assertEqual(cli.main(["run", "--brightness", value]), 0)
                 self.assertEqual(run.call_args.args[0].brightness, int(value))
+
+    def test_away_minutes_default_to_ten_for_both_residents(self):
+        for argv in (["run"], ["monitor"], ["run", "--away-minutes", "0"]):
+            with self.subTest(argv=argv), mock.patch.object(cli, "cmd_run", return_value=0) as run, \
+                    mock.patch.object(cli, "cmd_monitor", return_value=0) as monitor:
+                cli.main(argv)
+                called = run if argv[0] == "run" else monitor
+                self.assertEqual(called.call_args.args[0].away_minutes, int(argv[2]) if len(argv) > 2 else 10)
 
     def test_preview_size(self):
         for argv, expected in ((["preview"], "480x320"), (["preview", "--size", "1280x720"], "1280x720")):
