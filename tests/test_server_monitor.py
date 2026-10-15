@@ -62,6 +62,17 @@ class ConfigTest(unittest.TestCase):
         with self.assertRaises(sm.ConfigError):
             sm.load_config("/nonexistent/monitor.toml")
 
+    def test_logo_is_relative_to_the_config_file_and_must_exist(self):
+        self.assertIsNone(sm.load_config(str(EXAMPLE)).logo)
+        folder = Path(tempfile.mkdtemp())
+        self.addCleanup(lambda: [p.unlink() for p in folder.iterdir()] and None or folder.rmdir())
+        path = folder / "monitor.toml"
+        path.write_text(EXAMPLE.read_text().replace('title = "example.com"\n', 'title = "example.com"\nlogo = "mark.png"\n'))
+        with self.assertRaises(sm.ConfigError):
+            sm.load_config(str(path))
+        (folder / "mark.png").write_bytes(b"")
+        self.assertEqual(sm.load_config(str(path)).logo, str((folder / "mark.png").resolve()))
+
 
 class ParseTest(unittest.TestCase):
     def test_latest_datapoint(self):

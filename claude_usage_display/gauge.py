@@ -299,14 +299,26 @@ def _value(draw: ImageDraw.ImageDraw, cx: float, baseline: float, percent: float
         draw.text((left + number_width + layout.px(1), baseline), "%", font=unit_font, fill=SECONDARY, anchor="ls")
 
 
+def load_mark(path: str | Path) -> Image.Image:
+    """アイコンやロゴの画像を読み、周りの透明な余白を切り落とす。"""
+    image = Image.open(path).convert("RGBA")
+    return image.crop(image.getbbox() or (0, 0, *image.size))
+
+
+def paste_mark(image: Image.Image, mark: Image.Image, left: float, center_y: float, side: int) -> None:
+    """``mark`` を、縦横比を保って一辺 ``side`` の枠に縮め、枠の左端 ``left``・縦の中心 ``center_y`` に置く。"""
+    mark = mark.copy()
+    mark.thumbnail((side, side), Image.LANCZOS)
+    image.paste(mark, (round(left + (side - mark.width) / 2), round(center_y - mark.height / 2)), mark)
+
+
 def load_icons(directory: str | Path) -> dict[str, Image.Image]:
     """``directory`` の ``claude.png`` と ``gemini.png`` を読む。無いものは飛ばす。周りの透明な余白は切り落とす。"""
     icons = {}
     for name in ("claude", "gemini"):
         path = Path(directory) / f"{name}.png"
         if path.is_file():
-            image = Image.open(path).convert("RGBA")
-            icons[name] = image.crop(image.getbbox() or (0, 0, *image.size))
+            icons[name] = load_mark(path)
     return icons
 
 
@@ -342,10 +354,7 @@ def _header(image: Image.Image, draw: ImageDraw.ImageDraw, layout: Layout, basel
     left = inset
     if icon is not None:
         side = round(px(ICON_SIZE))
-        mark = icon.copy()
-        mark.thumbnail((side, side), Image.LANCZOS)
-        center_y = badge[1]  # 名前の字の高さの中ほど
-        image.paste(mark, (round(left + (side - mark.width) / 2), round(center_y - mark.height / 2)), mark)
+        paste_mark(image, icon, left, badge[1], side)  # 縦は、名前の字の高さの中ほど
         left += side + px(ICON_GAP)
     draw.text((left, baseline), title, font=font(pt(SUBHEAD), 6), fill=LABEL, anchor="ls")
     if snapshot:

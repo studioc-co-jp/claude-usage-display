@@ -1,6 +1,9 @@
 # monitor コマンド（サーバーの状態の画面）の設定の見本。
 # monitor.toml に写して値を書き換える。monitor.toml は git に入れない（.gitignore）。
 title = "example.com"
+# 見出しの名前の左に出すロゴ（任意）。白一色・背景透明の PNG にする（地は黒、異常のときは赤になるため）。
+# 20 ピクセル角の枠に、縦横比を保って縮めて出す。~ と、この設定ファイルからの相対パスが使える
+# logo = "~/Library/Application Support/claude-usage-display/icons/example.png"
 region = "ap-northeast-1"
 # Keychain の項目のサービス名。アカウント名 = アクセスキー ID、パスワード = シークレット。
 # 鍵は cloudwatch:GetMetricStatistics と、下の状態ファイルの s3:GetObject だけを持つ読み取り専用のもの

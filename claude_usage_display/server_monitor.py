@@ -20,6 +20,7 @@ import subprocess
 import tomllib
 from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
+from pathlib import Path
 
 METRIC_WINDOW = timedelta(minutes=10)   # 少なくともこの範囲の平均を読む（続けて超えた回数を数えるため、必要なら広げる）
 METRIC_STALE = timedelta(minutes=5)     # これより古い値しかなければ「届いていない」（period が長いときは 2 周期）
@@ -69,6 +70,7 @@ class MonitorConfig:
     state_stale: timedelta = timedelta(minutes=5)
     red_kinds: tuple[str, ...] = ("http", "tls")
     names: tuple[tuple[str, str], ...] = ()  # 監視の ID → 画面に出す名前
+    logo: str | None = None  # 見出しの名前の左に出すロゴの画像（PNG）の絶対パス
 
     def display_name(self, incident: "Incident") -> str:
         name = dict(self.names).get(incident.name, incident.name)
@@ -125,6 +127,18 @@ class Assessment:
         return bool(self.alerts)
 
 
+def _logo_path(value, config_path: str) -> str | None:
+    """``logo`` の値を絶対パスにする。``~`` と、設定ファイルからの相対パスを使える。"""
+    if value is None:
+        return None
+    logo = Path(str(value)).expanduser()
+    if not logo.is_absolute():
+        logo = Path(config_path).resolve().parent / logo
+    if not logo.is_file():
+        raise ConfigError(f"logo の画像がありません: {logo}")
+    return str(logo)
+
+
 def load_config(path: str) -> MonitorConfig:
     try:
         with open(path, "rb") as f:
@@ -145,7 +159,8 @@ def load_config(path: str) -> MonitorConfig:
             state_bucket=state.get("bucket"), state_key=state.get("key"),
             state_stale=timedelta(seconds=int(state.get("stale_seconds", 300))),
             red_kinds=tuple(state.get("red_kinds", ("http", "tls"))),
-            names=tuple(sorted((str(k), str(v)) for k, v in state.get("names", {}).items())))
+            names=tuple(sorted((str(k), str(v)) for k, v in state.get("names", {}).items())),
+            logo=_logo_path(raw.get("logo"), path))
     except (KeyError, TypeError, ValueError) as e:
         raise ConfigError(f"設定ファイルの項目が足りないか、形が違います: {e!r}") from e
     if len(config.metrics) != 4:

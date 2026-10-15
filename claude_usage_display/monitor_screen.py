@@ -9,22 +9,28 @@
 - ジョブの障害などは、地を黒のまま、見出しにオレンジで件数を出す
 - 横置きは、区画の左にリング、右に名前と大きな数字。縦置きは、名前の下にリング、リングの中に数字
   （どちらもユーザーが見本の画像で選んだ。2026-10-10・2026-10-11）
+- 設定に ``logo`` があれば、見出しの名前の左にロゴを出す。大きさと縦の位置は、利用枠の画面の 3.5 インチの
+  アイコンと同じ（20 ピクセル角の枠。名前の字の高さの中ほど）。地は黒と赤になるので、ロゴは白一色にする
 """
 
 from __future__ import annotations
 
 import math
 from dataclasses import dataclass
+from functools import lru_cache
 
 from PIL import Image, ImageDraw
 
-from .gauge import BACKGROUND, BLUE, CARD, DARK_TRACK_MIX, LABEL, ORANGE, RED, SECONDARY, _mix, rounded
+from .gauge import (BACKGROUND, BLUE, CARD, DARK_TRACK_MIX, ICON_GAP, ICON_SIZE, LABEL, ORANGE, RED, SECONDARY, _mix,
+                    load_mark, paste_mark, rounded)
 from .render import JST, SMALL_WEIGHT, fit_font, font
 from .server_monitor import Assessment, MonitorConfig, ServerStatus, warning_tint
 
 SCALE = 4
 GREEN = (48, 209, 88)  # HIG の Green（ダーク）
 WHITE = (255, 255, 255)
+LOGO_RISE = 5.5  # ロゴの縦の中心を、名前の基準線からこれだけ上げる（利用枠の画面の見出しのアイコンと同じ）
+TITLE_GAP = 8  # 名前と、右の時刻・同じ行の監視の状態との間
 
 
 @dataclass(frozen=True)
@@ -102,6 +108,11 @@ class _Shapes:
         return self.image.resize(self.size, Image.LANCZOS)
 
 
+@lru_cache(maxsize=4)
+def _logo(path: str) -> Image.Image:
+    return load_mark(path)
+
+
 def _alert_text(assessment: Assessment) -> str:
     rest = len(assessment.alerts) - 1
     return assessment.alerts[0] + (f"　ほか {rest} 件" if rest else "")
@@ -133,15 +144,28 @@ def render(status: ServerStatus | None, assessment: Assessment | None, config: M
             color = {"normal": BLUE, "warning": ORANGE, "critical": RED}[tint]
             track = _mix(SECONDARY if value is None else color, BACKGROUND, DARK_TRACK_MIX)
         shapes.ring(x + ring_x, y + ring_y, radius, ring_width, value, color, track)
+    # 見出しの名前。横置きは監視の状態が名前と同じ行にあるので、名前が帯にかかるときは帯と文言を右へ寄せる
+    # （名前が短ければ帯は中央のまま。ロゴを付ける前から、見本の example.com の末尾が帯に隠れていた）
+    title_left = layout.inset + (ICON_SIZE + ICON_GAP if config.logo else 0)
+    same_row = layout.pill[1] < layout.title_baseline
+    stamp = f"{status.fetched_at.astimezone(JST):%H:%M} " + ("時点" if fetch_error else "更新") if status else ""
+    stamp_font = font(layout.stamp_size, SMALL_WEIGHT)
+    title_right = width / 2 if same_row else width - layout.inset - stamp_font.getlength(stamp) - TITLE_GAP
+    title_font = fit_font(config.title, title_right - title_left, 15, 6)
+    pill = layout.pill
+    if same_row:
+        pill = (max(pill[0], round(title_left + title_font.getlength(config.title) + TITLE_GAP)), *pill[1:])
+    center = (pill[0] + pill[2]) / 2
+
     # 監視の状態: 赤の状態は白い帯にアラート、それ以外は点と短い文言
-    pill_width = layout.pill[2] - layout.pill[0]
+    pill_width = pill[2] - pill[0]
     message = message_font = message_left = None
     warn = False
     two_lines = red and layout.tall_pill is not None and len(assessment.alerts) > 1
     if two_lines:
         shapes.pill(layout.tall_pill, WHITE, radius=16)
     elif red:
-        shapes.pill(layout.pill, WHITE)
+        shapes.pill(pill, WHITE)
     else:
         message = fetch_error or (assessment.warnings[0] if assessment and assessment.warnings else None)
         warn = message is not None
@@ -150,7 +174,7 @@ def render(status: ServerStatus | None, assessment: Assessment | None, config: M
         if message:
             dot_space = layout.dot_radius * 2 + 5
             message_font = fit_font(message, pill_width - 20, layout.status_size, SMALL_WEIGHT)
-            message_left = width / 2 - (message_font.getlength(message) + dot_space) / 2 + dot_space
+            message_left = center - (message_font.getlength(message) + dot_space) / 2 + dot_space
             shapes.circle(message_left - layout.dot_radius - 5, layout.dot_y, layout.dot_radius,
                           ORANGE if warn else GREEN)
     image = shapes.finish()
@@ -158,21 +182,21 @@ def render(status: ServerStatus | None, assessment: Assessment | None, config: M
 
     # 見出し
     ink = WHITE if red else LABEL
-    draw.text((layout.inset, layout.title_baseline), config.title, font=font(15, 6), fill=ink, anchor="ls")
-    if status:
-        stamp = f"{status.fetched_at.astimezone(JST):%H:%M} " + ("時点" if fetch_error else "更新")
-        draw.text((width - layout.inset, layout.title_baseline), stamp, font=font(layout.stamp_size, SMALL_WEIGHT),
-                  fill=ink, anchor="rs")
+    if config.logo:
+        paste_mark(image, _logo(config.logo), layout.inset, layout.title_baseline - LOGO_RISE, ICON_SIZE)
+    draw.text((title_left, layout.title_baseline), config.title, font=title_font, fill=ink, anchor="ls")
+    if stamp:
+        draw.text((width - layout.inset, layout.title_baseline), stamp, font=stamp_font, fill=ink, anchor="rs")
     if two_lines:
         first, second = layout.tall_baselines
         text = assessment.alerts[0]
-        draw.text((width / 2, first), text, font=fit_font(text, pill_width - 24, layout.alert_size, 6), fill=RED,
+        draw.text((center, first), text, font=fit_font(text, pill_width - 24, layout.alert_size, 6), fill=RED,
                   anchor="ms")
-        draw.text((width / 2, second), f"ほか {len(assessment.alerts) - 1} 件", font=font(15, 6), fill=RED,
+        draw.text((center, second), f"ほか {len(assessment.alerts) - 1} 件", font=font(15, 6), fill=RED,
                   anchor="ms")
     elif red:
         text = _alert_text(assessment)
-        draw.text((width / 2, layout.status_baseline - 1 if not portrait else layout.status_baseline + 1), text,
+        draw.text((center, layout.status_baseline - 1 if not portrait else layout.status_baseline + 1), text,
                   font=fit_font(text, pill_width - 24, layout.alert_size, 6), fill=RED, anchor="ms")
     elif message:
         draw.text((message_left, layout.status_baseline), message, font=message_font,

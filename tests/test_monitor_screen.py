@@ -1,9 +1,14 @@
+import tempfile
 import unittest
 from datetime import timedelta
+from pathlib import Path
+
+from PIL import Image
 
 from claude_usage_display import monitor_screen as ms
 from claude_usage_display import server_monitor as sm
-from claude_usage_display.gauge import BACKGROUND, ORANGE, RED
+from claude_usage_display.gauge import BACKGROUND, ICON_GAP, ICON_SIZE, ORANGE, RED
+from claude_usage_display.render import font
 from tests.test_server_monitor import NOW, config, status
 
 
@@ -64,6 +69,40 @@ class MonitorScreenTest(unittest.TestCase):
         self.assertEqual(len(sm.assess(two, cfg, NOW).alerts), 2)
         image = ms.render(two, sm.assess(two, cfg, NOW), cfg, portrait=True)
         self.assertEqual(image.getpixel(below_one_line), (255, 255, 255))
+
+
+class HeaderTest(unittest.TestCase):
+    def test_logo_sits_left_of_the_title_on_black_and_red(self):
+        with tempfile.NamedTemporaryFile(suffix=".png", delete=False) as f:
+            Image.new("RGBA", (40, 40), (0, 255, 0, 255)).save(f, format="PNG")
+        self.addCleanup(Path(f.name).unlink)
+        cfg = sm.MonitorConfig(**{**sm.load_config(str(Path(sm.__file__).parents[1] / "monitor.example.toml")).__dict__,
+                                  "logo": f.name})
+        for portrait in (False, True):
+            layout = ms.PORTRAIT if portrait else ms.LANDSCAPE
+            for st in (status(), status(values=(92, 61, 47, 3))):
+                with self.subTest(portrait=portrait, red=st.metrics[0].value > 80):
+                    image = ms.render(st, sm.assess(st, cfg, NOW), cfg, portrait=portrait)
+                    center = (layout.inset + ICON_SIZE // 2, round(layout.title_baseline - ms.LOGO_RISE))
+                    self.assertTrue(near(image.getpixel(center), (0, 255, 0)))
+                    # 名前は、ロゴの枠と間の分だけ右から始まる
+                    left = layout.inset + ICON_SIZE + ICON_GAP
+                    row = range(layout.title_baseline - 12, layout.title_baseline)
+                    background = image.getpixel((left - 2, layout.title_baseline - 6))
+                    ink = [x for x in range(left - ICON_GAP + 1, left + 6)
+                           if any(image.getpixel((x, y)) != background for y in row)]
+                    self.assertTrue(ink and ink[0] >= left - 1, ink)
+
+    def test_landscape_pill_moves_right_of_a_long_title(self):
+        # 帯の左端（116）にかかる名前。直す前は、末尾が白い帯に隠れていた
+        cfg = config(title="example.com")
+        st = status(values=(92, 61, 47, 3))
+        image = ms.render(st, sm.assess(st, cfg, NOW), cfg)
+        end = ms.LANDSCAPE.inset + font(15, 6).getlength("example.com")
+        self.assertGreater(end, ms.LANDSCAPE.pill[0])
+        middle = (ms.LANDSCAPE.pill[1] + ms.LANDSCAPE.pill[3]) // 2
+        gap = [image.getpixel((x, middle)) for x in range(round(end) + 2, round(end) + ms.TITLE_GAP - 1)]
+        self.assertTrue(all(near(p, RED) for p in gap), gap)
 
 
 if __name__ == "__main__":
