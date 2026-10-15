@@ -266,7 +266,7 @@ class MonitorRunnerTest(unittest.TestCase):
                 mock.patch.object(cli, "datetime", mock.Mock(wraps=datetime, now=lambda tz=None: now)), \
                 self.assertLogs(cli.log, "INFO") as logs:
             runner.loop()
-        opened.assert_called_once_with(False, "3.5", False)
+        opened.assert_called_once_with(False, "3.5", False, None)  # 最後は USB の位置（--location。無ければ None）
         self.assertEqual(shown, [(0, 0, 0), cli.gauge.RED, (0, 0, 0)])
         messages = [r.getMessage() for r in logs.records]
         self.assertIn("アラート: CPU 92%（80% 以上が 5 分）", messages)
@@ -282,6 +282,61 @@ class FitToTest(unittest.TestCase):
         fitted = cli.fit_to(Image.new("RGB", (480, 320), (255, 255, 255)), (1280, 720))
         self.assertEqual(fitted.size, (1280, 720))
         self.assertEqual(fitted.getbbox(), (100, 0, 1180, 720))
+
+
+class LocalRunnerTest(unittest.TestCase):
+    def test_opens_the_display_at_its_location_and_logs_pressure_swap_and_warnings(self):
+        from claude_usage_display import local_monitor as lm
+        from tests.test_local_monitor import NOW, sample
+
+        readings = [lm.build(sample(), NOW), lm.build(sample(pressure=2, swap=round(4.2 * 2 ** 30)), NOW),
+                    lm.build(sample(), NOW)]
+        reader = mock.Mock()
+        reader.fetch.side_effect = readings
+        args = argparse.Namespace(flip=False, device="3.5", portrait=False, brightness=30, interval=0, title="Mac mini",
+                                  ssd="/Volumes/SSD", location=0x00111000)
+        runner = cli.LocalRunner(args, reader=reader)
+        shown = []
+        display = RecordingDisplay(on_show=lambda image: (shown.append(image.getpixel((250 + 58, 44 + 69 - 52 + 5))),
+                                                          len(shown) == len(readings) and runner.stop.set()))
+        with mock.patch.object(cli, "open_display", return_value=display) as opened, \
+                self.assertLogs(cli.log, "INFO") as logs:
+            runner.loop()
+        opened.assert_called_once_with(False, "3.5", False, 0x00111000)
+        self.assertEqual(len(shown), 3)
+        self.assertTrue(near_color(shown[1], cli.gauge.ORANGE))  # 逼迫の段階 2 で、メモリのリングがオレンジ
+        messages = [r.getMessage() for r in logs.records]
+        self.assertEqual([m for m in messages if m.startswith("メモリの逼迫")],
+                         ["メモリの逼迫の段階 1、スワップ 0.0 GB", "メモリの逼迫の段階 2、スワップ 4.2 GB",
+                          "メモリの逼迫の段階 1、スワップ 0.0 GB"])
+        self.assertIn("見出しの注意: メモリ逼迫　スワップ 4.2 GB", messages)
+        self.assertIn("見出しの注意: なし", messages)
+
+    def test_read_errors_keep_the_last_values_and_are_logged_once(self):
+        from claude_usage_display import local_monitor as lm
+        from tests.test_local_monitor import NOW, sample
+
+        reader = mock.Mock()
+        reader.fetch.side_effect = [lm.build(sample(), NOW), OSError("読めない"), OSError("読めない"),
+                                    lm.build(sample(), NOW)]
+        args = argparse.Namespace(flip=False, device="3.5", portrait=False, brightness=30, interval=0, title="Mac mini",
+                                  ssd="/Volumes/SSD", location=None)
+        runner = cli.LocalRunner(args, reader=reader)
+        with self.assertLogs(cli.log, "INFO") as logs:
+            runner.assessment = runner.fetch()
+            status = runner.status
+            for _ in range(2):  # 読めない間は、前回の判定と値をそのまま使う
+                self.assertIs(runner.fetch(), runner.assessment)
+                self.assertIs(runner.status, status)
+            runner.fetch()
+        messages = [r.getMessage() for r in logs.records]
+        self.assertEqual(messages.count("この Mac の値を読めません"), 1)
+        self.assertIn("この Mac の値を読めるようになりました", messages)
+        self.assertIsNotNone(runner.status)
+
+
+def near_color(pixel, color, tolerance=12):
+    return all(abs(a - b) <= tolerance for a, b in zip(pixel, color))
 
 
 class FakePresence:
@@ -406,6 +461,29 @@ class ArgumentsTest(unittest.TestCase):
                 cli.main(argv)
                 called = run if argv[0] == "run" else monitor
                 self.assertEqual(called.call_args.args[0].away_minutes, int(argv[2]) if len(argv) > 2 else 10)
+
+    def test_local_defaults_and_location(self):
+        with mock.patch.object(cli, "cmd_local", return_value=0) as local:
+            cli.main(["local"])
+            args = local.call_args.args[0]
+            self.assertEqual((args.interval, args.away_minutes, args.ssd, args.location, args.title),
+                             (60, 10, "/Volumes/SSD", None, None))
+            for text in ("0x00111000", "00111000"):
+                cli.main(["local", "--location", text])
+                self.assertEqual(local.call_args.args[0].location, 0x00111000)
+        with mock.patch.object(cli, "cmd_monitor", return_value=0) as monitor:
+            cli.main(["monitor", "--device", "3.5", "--location", "0x00111000"])
+            self.assertEqual(monitor.call_args.args[0].location, 0x00111000)
+        for argv in (["local", "--location", "zz"], ["local", "--location", "0x100000000"], ["local", "--device", "3.5"],
+                     ["monitor", "--device", "5.2", "--location", "0x00111000"], ["local", "--demo", "normal"],
+                     ["local", "--interval", "59"]):
+            with self.subTest(argv=argv), mock.patch.object(cli, "cmd_local") as local, \
+                    mock.patch.object(cli, "cmd_monitor") as monitor, mock.patch("sys.stderr"):
+                with self.assertRaises(SystemExit) as raised:
+                    cli.main(argv)
+                self.assertEqual(raised.exception.code, 2)
+                local.assert_not_called()
+                monitor.assert_not_called()
 
     def test_preview_size(self):
         for argv, expected in ((["preview"], "480x320"), (["preview", "--size", "1280x720"], "1280x720")):

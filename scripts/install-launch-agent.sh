@@ -3,11 +3,14 @@
 #
 #   scripts/install-launch-agent.sh [run のオプション…]
 #   scripts/install-launch-agent.sh --monitor [monitor のオプション…]   サーバーの状態の画面（別の常駐）
+#   scripts/install-launch-agent.sh --local [local のオプション…]       この Mac の状態の画面（別の常駐）
 #   例: scripts/install-launch-agent.sh --flip --brightness 40
 #       scripts/install-launch-agent.sh --monitor --device 3.5
+#       scripts/install-launch-agent.sh --local --location 0x00112000
 #
 # launchd/ のひな形のパスを置き換えて ~/Library/LaunchAgents/ に置き、読み込ませる。
-# run と monitor は別のラベル・別のログで、同時に登録できる（ディスプレイは --device で分ける）。
+# run・monitor・local は別のラベル・別のログで、同時に登録できる（ディスプレイは --device で分ける。
+# 3.5 インチを 2 台使うときは、monitor と local の両方に --location を付けて、USB の位置で分ける）。
 set -eu
 
 LABEL=jp.co.studioc.claude-usage-display
@@ -18,6 +21,11 @@ if [ "${1:-}" = "--monitor" ]; then
   LABEL=jp.co.studioc.claude-usage-display.monitor
   COMMAND=monitor
   LOG="$HOME/Library/Logs/claude-usage-display-monitor.log"
+elif [ "${1:-}" = "--local" ]; then
+  shift
+  LABEL=jp.co.studioc.claude-usage-display.local
+  COMMAND=local
+  LOG="$HOME/Library/Logs/claude-usage-display-local.log"
 fi
 ROOT=$(cd "$(dirname "$0")/.." && pwd -P)
 PYTHON="$ROOT/.venv/bin/python"
@@ -51,6 +59,7 @@ def check_monitor(args):
 
 cli.cmd_run = lambda args: 0
 cli.cmd_monitor = check_monitor
+cli.cmd_local = lambda args: 0
 sys.exit(cli.main(sys.argv[1:]))
 EOF
 

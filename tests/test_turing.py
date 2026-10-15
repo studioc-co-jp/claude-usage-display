@@ -9,6 +9,7 @@ from claude_usage_display.turing import (
     brightness_level,
     encode_command,
     encode_orientation,
+    location_id,
     to_rgb565le,
 )
 
@@ -110,6 +111,15 @@ class TuringRevATest(unittest.TestCase):
     def test_flip_uses_reverse_landscape(self):
         TuringRevA(self.transport, flipped=True).initialize(brightness=30)
         self.assertEqual(self.transport.writes[-2][6], 103)
+
+
+class LocationTest(unittest.TestCase):
+    def test_matches_the_location_id_of_system_profiler(self):
+        # 2026-10-15 にこの Mac の ioreg -p IOUSB で確かめた組（3.5 インチ・カメラ・外付けのディスク）
+        self.assertEqual(location_id(0, (1, 1, 1)), 0x00111000)
+        self.assertEqual(location_id(0, (1, 1, 2)), 0x00112000)
+        self.assertEqual(location_id(3, (2, 4)), 0x03240000)
+        self.assertEqual(location_id(2, None), 0x02000000)
 
 
 if __name__ == "__main__":

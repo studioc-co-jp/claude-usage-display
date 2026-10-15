@@ -83,6 +83,9 @@ class MetricValue:
     value: float | None
     at: datetime | None
     streak: int | None = None  # いちばん新しい値から、しきい値以上が続いている回数（None は値だけで判断する）
+    # この Mac の状態の画面（local_monitor.py）が使う。サーバーの画面は使わない（None のまま）
+    detail: tuple[str, ...] | None = None  # リングの右の下の行（None なら「しきい値 N%」。量を出すときに使う）
+    tint: str | None = None  # リングの色の段階（normal・warning・critical）の決め打ち。None ならしきい値で決める
 
     @property
     def sustained(self) -> bool:

@@ -125,6 +125,8 @@ python3 -m venv .venv
 .venv/bin/python -m claude_usage_display probe                     # ディスプレイの USB 情報と、インターフェースを確保できるか
 .venv/bin/python -m claude_usage_display test-pattern              # 向きと色の確認画面（左上が赤で「左上」）
 .venv/bin/python -m claude_usage_display run                       # 常駐して表示し続ける（Ctrl+C で終了）
+.venv/bin/python -m claude_usage_display monitor                   # サーバーの状態の画面（「サーバーの状態の画面」を参照）
+.venv/bin/python -m claude_usage_display local                     # この Mac の状態の画面（「この Mac の状態の画面」を参照）
 ```
 
 オプション:
@@ -140,7 +142,8 @@ python3 -m venv .venv
 | `--gemini-interval 秒` | `run` | 900 | Gemini の枠を取得する間隔（300 以上） |
 | `--agy パス` | `preview`・`run` | 自動 | Antigravity の CLI（`agy`）の場所。既定は PATH と `/opt/homebrew/bin`・`/usr/local/bin` から探す |
 | `--icons フォルダ` | `preview`・`run` | なし | 見出しの左に出すアイコン（`claude.png`・`gemini.png`）を置いたフォルダ |
-| `--away-minutes 分` | `run`・`monitor` | 10 | キーボード・マウスをこの分数触らなければ消灯する（焼き付き対策。0 で消灯しない。「席を離れている間の消灯」を参照） |
+| `--away-minutes 分` | `run`・`monitor`・`local` | 10 | キーボード・マウスをこの分数触らなければ消灯する（焼き付き対策。0 で消灯しない。「席を離れている間の消灯」を参照） |
+| `--location 位置` | `test-pattern`・`run`・`monitor`・`local` | なし | 3.5 インチを USB の位置で選ぶ（`probe` が出す「位置 0x…」）。同じ 3.5 インチを 2 台つなぐときに使う（「この Mac の状態の画面」を参照） |
 
 モデル別の週次上限は、既定で Fable のものを出します。別のモデルの上限を出すときは、コマンドの前に `--model` を付けます（例: `.venv/bin/python -m claude_usage_display --model Opus run`）。その上限が無いプランでは、値の代わりに「--」（横棒の画面では「—」）が出ます。
 
@@ -238,7 +241,33 @@ scripts/install-launch-agent.sh --device 5.2 --gemini            # 常駐に登�
 
 - 値は `GetMetricStatistics` で読みます。CloudWatch の API は月 100 万リクエストまで無料で（`GetMetricData` は対象外のため使いません）、1 分ごとに 4 つ読むと月に約 17 万リクエストです（CloudWatch の料金ページ「Free Tier」）。続けて超えた回数は、1 回の呼び出しで読む範囲（`period` ×（`datapoints` ＋ 2）、少なくとも 10 分）の中で数えるので、呼び出しの回数は変わりません
 - 監視の状態ファイルは、S3 の JSON（`{"<種類>:<名前>": {"alerting": true, "reason": "…", "since": 秒}}`）です。種類のうち、どれを赤にするかは `red_kinds`、画面に出す名前は `[state.names]` で決めます
-- **2 台を使い分けるときは、`--device` を必ず付けて登録します**（例: 利用枠は `scripts/install-launch-agent.sh --device 5.2`、サーバーの状態は `scripts/install-launch-agent.sh --monitor --device 3.5`）。既定の `auto` は 5.2 インチを先に探し、無ければ 3.5 インチを使うので、5.2 インチを外したときに、もう一方の画面のディスプレイを取りに行きます
+- **2 台を使い分けるときは、`--device` を必ず付けて登録します**（例: 利用枠は `scripts/install-launch-agent.sh --device 5.2`、サーバーの状態は `scripts/install-launch-agent.sh --monitor --device 3.5`）。既定の `auto` は 5.2 インチを先に探し、無ければ 3.5 インチを使うので、5.2 インチを外したときに、もう一方の画面のディスプレイを取りに行きます。3.5 インチを 2 台使うときは、さらに `--location` で分けます（次の節）
+
+## この Mac の状態の画面（local）
+
+ディスプレイをつないだ Mac 自身の状態（CPU・メモリ・内蔵ディスク・外付けの SSD）を、3.5 インチに横置きで 1 分ごとに出す画面です。配置はサーバーの状態の画面の横置きと同じで、リングの右の下の行に、しきい値ではなく量を出します。
+
+![この Mac の状態の画面（見本の値）](docs/images/local.png)
+
+- **CPU**: 取得の間隔（1 分）の平均の使用率です。下の行は、高性能コア（性能）と高効率コア（効率）それぞれの使用率の平均です。80% 以上で赤、65% 以上でオレンジにします
+- **メモリ**: 使用率と使用量です。**リングの色は使用率ではなく、macOS のメモリの逼迫の段階（`kern.memorystatus_vm_pressure_level`）で決めます**（警告でオレンジ、危険で赤）。macOS は、メモリが逼迫しているかを使用率では判定していないためです（xnu の `osfmk/vm/vm_pageout.c`）
+- **ディスク・SSD**: 使用率と使用量です。スナップショットなど、macOS が自動で空ける分は空きとして数えます。90% 以上で赤、75% 以上でオレンジです。SSD がつながっていないときは「--」と「未接続」を出します。SSD の場所は `--ssd`（既定は `/Volumes/SSD`）で変えられます
+- **見出しの行**: 普段は最後のバックアップ（Time Machine）の時刻を緑で出し、バックアップ中は進み具合を出します。次のときは、オレンジでその内容に替えます: メモリが逼迫したとき（スワップの量を添えます）、熱で性能を制限しているとき、内蔵 SSD の SMART が正常でないとき、最後のバックアップから 36 時間を過ぎたとき。画面全体を赤にすることはありません
+- メモリの逼迫の段階とスワップの量は、変わったときにログ（`~/Library/Logs/claude-usage-display-local.log`）へ残します。再起動するとスワップの記録は消えるので、いつ・どれだけ使ったかを後から追えるようにしています
+- どの値も、管理者権限なしで読みます。最後のバックアップの時刻は Time Machine の設定ファイルから読みますが、自動起動（launchd）で動かすとフルディスクアクセスが無いため読めません。そのときは、TimeMachineEditor があれば `tmectl info` の時刻（成功したバックアップの時刻）を使います。どちらも読めなければ「バックアップの時刻を読めません」と出ます
+
+![メモリが逼迫したとき（見本の値）](docs/images/local-warning.png)
+
+```
+.venv/bin/python -m claude_usage_display local --preview local.png               # 今の値で画像だけ作る
+.venv/bin/python -m claude_usage_display local --preview local.png --demo normal  # 見本の値（warning はメモリの逼迫）
+.venv/bin/python -m claude_usage_display local --location 0x00112000             # 常駐する（Ctrl+C で終了）
+scripts/install-launch-agent.sh --local --location 0x00112000                     # 自動起動（解除は --local を付けて uninstall）
+```
+
+オプションは `--brightness`・`--flip`・`--location`・`--interval`（既定 60 秒）・`--away-minutes`・`--title`（見出しの名前。既定は機種名）・`--ssd`・`--preview`・`--demo` です。
+
+**3.5 インチを 2 台使うときは、`--location` で USB の位置を指定します。**同じ機種の 2 台は、USB の ID もシリアル番号（`USB35INCHIPSV2`）も同じなので、挿している USB の位置で見分けます。位置は `probe` が「位置 0x…」と出します（`system_profiler SPUSBHostDataType` の Location ID と同じ値です）。サーバーの状態の画面にも `--location` を付けて登録し直してください。付けないと、2 つの常駐が同じ 3.5 インチを取り合います。挿す端子を変えると位置も変わるので、そのときも登録し直します。
 
 ## 別の Mac（MacBook など）で使う
 

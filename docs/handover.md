@@ -363,6 +363,15 @@ scripts/uninstall-launch-agent.sh                                 # 自動起動
   - ディスク（内蔵）: 90%（自動で空く分を空きとして数えた値で、赤は空き 49 GB 未満、オレンジは 124 GB 未満）。macOS のアップデートに要る空きは Apple の「How to download and install macOS」（https://support.apple.com/en-us/102662 ）に書かれておらず、Apple 以外の資料では 35〜60 GB（大学の案内で 50 GB など）。赤の境目はその範囲に入る
   - SSD: 90%（赤は空き 400 GB 未満、オレンジは 1 TB 未満）。データを置くだけなので OS としての必要量は無く、使い方で決める値。95% も選べると伝えた
 - 2 台目は USB のシリアル番号が 1 台目と同じ `USB35INCHIPSV2` なので、挿す USB の位置で見分ける作りになる（別の会話が `ioreg` で確かめた）。届いたら、2 台目のシリアル番号を `system_profiler SPUSBHostDataType` で確かめる
+- **実装した**（2026-10-15、ユーザーの指示「元のセッションが行方不明。実装はこのセッションで進めて」。設計を決めた会話のプロセスが 16:44 に止まったため、この会話で作った）
+  - `local` コマンドと常駐（`__main__.LocalRunner`。`MonitorRunner` を土台に、取得と描画の呼び出しだけを差し替える）、値の取得と組み立ては `local_monitor.py`。`monitor_screen.render` に、下の行の文言（`MetricValue.detail`。2 行目は `DETAIL_LINE`＝18 ピクセル下）、リングの色の決め打ち（`MetricValue.tint`）、異常が無いときの見出しの文言（`note`）を足した。どれも省けば前のとおりで、サーバーの画面は、見本の値・向き・取得の失敗の組み合わせ 26 通りで変更前と 1 ピクセルも違わないことを確かめた
+  - 同じ機種の 3.5 インチを USB の位置で選ぶ `--location`（`test-pattern`・`run`・`monitor`・`local`）。位置は macOS の Location ID（上の 8 ビットがバス、続く 4 ビットずつが端子の番号）で、pyusb の `bus`・`port_numbers` から組み立てた値が、この Mac の 17 台で `ioreg -p IOUSB` と一致した。`probe` が位置を出し、3.5 インチは位置ごとに確保を試す
+  - CPU の番号と種類の対応を実測で確かめた: `taskpolicy -b`（バックグラウンドの優先度。高効率コアで動く）で `yes` を 4 つ動かすと、`host_processor_info` の 0〜5 番だけが 87% 前後に上がり、6〜9 番は 27% 前後のままだった。デバイスツリーの `cpu0`〜`cpu5` が E であることと一致する
+  - `host_processor_info` の結果はカーネルが割り当てたページに入るので、`vm_deallocate` で返している（返さないと 1 分ごとに 1 ページずつ増え続ける）
+  - TimeMachineEditor の「Last run」は、成功したときだけ更新される（`/Library/Logs/TimeMachineEditor/scheduler.log`。10/15 の夜中の 5 回の失敗の間は 10/14 9:19 のままで、8:35 に更新された）。失敗した試行は「Last try」
+  - 熱の段階は、公開ヘッダー `libkern/OSThermalNotification.h` の通知（`kOSThermalNotificationPressureLevelName`）で読む。macOS の値は 0 Nominal・1 Moderate・2 Heavy・3 Trapping・4 Sleeping で、2 から見出しに出す（Moderate で出すかは決めていなかったので、性能の制限がはっきり起きている Heavy からにした）。バックアップが古いとみなすのは 36 時間（毎日のバックアップが 1 回抜けたら気付けるように）。この 2 つはユーザーに確かめていない値で、README に書いた
+  - テストは 165 件すべて通過（足したのは、`tests/test_local_monitor.py` の 13 件、描画 3 件、USB の位置 1 件、常駐 2 件、引数 1 件）
+  - 実機ではまだ表示していない。2026-10-15 17:31 に 2 台のディスプレイ（3.5 インチと 5.2 インチ）がどちらも USB から外れ（ログ「ディスプレイが外れました」）、実装を終えた時点でもつながっていなかったため
 
 ## 5. 残っている作業（上から順に）
 
@@ -462,6 +471,11 @@ scripts/uninstall-launch-agent.sh                                 # 自動起動
       - テスト 103 件すべて通過。判定の 1 行（`metric.sustained`）を直す前の形に戻すと、1 回だけの山のテストと、ディスクとスワップの回数のテストが落ちることを確かめた
       - この Mac の `monitor.toml` にもアラームと同じ値を書き足し、常駐を `launchctl kickstart -k` で再起動した（01:31 に接続）。実際の値で読めて、判定が正常なことを確かめた
     - 2026-10-10 1:47:45 に 3.5 インチが USB から外れた（ログ「ディスプレイが外れました」）。12:39 の時点でも USB の一覧に無い。原因はこのセッションでは分かっていない（ユーザーに報告した）。2026-10-11 0:40 にユーザーがつなぎ直し、同じハブの端子（Location ID `0x00111000`）で認識され、利用枠の常駐が 0:40:09 に接続した。0:41 の描き直しもエラーなく送られた
+11. **この Mac の状態の画面（`local`）を 2 台目の 3.5 インチで動かす**（2026-10-15 に実装した。§4-15。2 台目が届くのが再開の条件）
+    1. 2 台目をつなぎ、`.venv/bin/python -m claude_usage_display probe` で 2 台の「位置 0x…」を控える。シリアル番号が同じ `USB35INCHIPSV2` かも見る
+    2. サーバーの状態の常駐を、その 3.5 インチの位置を付けて登録し直す: `scripts/install-launch-agent.sh --monitor --device 3.5 --brightness 25 --location 0x…`（付けないと、2 つの常駐が同じ 3.5 インチを取り合う）
+    3. この Mac の状態の常駐を登録する: `scripts/install-launch-agent.sh --local --location 0x…`（明るさはサーバーの画面と見比べて決める）。天地が逆なら `--flip`
+    4. 実機の画面をユーザーに見てもらう（見出しの「バックアップ …」が launchd から読めるか＝`tmectl` が使えているか、CPU の 2 行目、ログ `~/Library/Logs/claude-usage-display-local.log`）
 
 ## 6. 公開するときに確かめること
 

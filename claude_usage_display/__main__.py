@@ -5,9 +5,11 @@
     python -m claude_usage_display test-pattern                   向きと色の確認画面を出す
     python -m claude_usage_display run                            常駐して表示し続ける
     python -m claude_usage_display monitor                        サーバーの状態を表示し続ける（monitor.toml）
+    python -m claude_usage_display local                          この Mac の状態を表示し続ける（local_monitor.py）
 
 ディスプレイは、TURZX の 5.2 インチ（turzx_usb.py）を先に探し、無ければ 3.5 インチ（rev A、turing.py）を使う。
-2 台を別々のプログラムに使うときは --device 3.5 / --device 5.2 で指定する。
+2 台を別々のプログラムに使うときは --device 3.5 / --device 5.2 で指定する。3.5 インチを 2 台使うときは、
+USB の位置（--location。probe が出す）で分ける（ID もシリアル番号も同じため）。
 
 run と preview に --gemini を付けると、Antigravity の Gemini の枠（antigravity.py）も下の段に出す。
 --icons で、見出しに出すアイコン（claude.png・gemini.png）のフォルダを指定する（ロゴはリポジトリに入れない）。
@@ -26,14 +28,14 @@ from datetime import datetime, timedelta, timezone
 
 from PIL import Image
 
-from . import gauge, monitor_screen, render
+from . import gauge, local_monitor, monitor_screen, render
 from .antigravity import LABELS as GEMINI_LABELS
 from .antigravity import AntigravityError, AntigravityReader
 from .presence import DEFAULT_AWAY_MINUTES, POLL_SECONDS, Presence
 from .render import render_test_pattern
-from .server_monitor import (AwsReader, ConfigError, FetchError, Incident, MetricValue, MonitorState, ServerStatus,
-                             assess, load_config)
-from .turing import PID, VID, DeviceNotFound, TuringRevA, UsbTransport, is_disconnected
+from .server_monitor import (Assessment, AwsReader, ConfigError, FetchError, Incident, MetricValue, MonitorConfig,
+                             MonitorState, ServerStatus, assess, load_config)
+from .turing import PID, VID, DeviceNotFound, TuringRevA, UsbTransport, is_disconnected, location_id
 from .turzx_usb import MODELS as TURZX_MODELS
 from .turzx_usb import VID as TURZX_VID
 from .turzx_usb import TurzxUsb, TurzxUsbTransport
@@ -51,18 +53,33 @@ SIZES = {"480x320": (480, 320), "1280x720": (1280, 720)}  # 3.5 インチと 5.2
 DEVICES = ("auto", "3.5", "5.2")
 
 
+def _location(text: str) -> int:
+    """--location の値（16 進数。「0x00111000」も「00111000」も受け付ける）。"""
+    try:
+        value = int(text, 16)
+    except ValueError:
+        raise argparse.ArgumentTypeError(f"位置は 16 進数で書いてください（例: 0x00111000）: {text}") from None
+    if not 0 <= value <= 0xFFFFFFFF:
+        raise argparse.ArgumentTypeError(f"位置は 8 桁の 16 進数です（例: 0x00111000）: {text}")
+    return value
+
+
 def device_ids(device: str) -> str:
     """接続を待つときにログへ出す USB の ID。"""
     return {"3.5": f"{VID:04x}:{PID:04x}", "5.2": f"{TURZX_VID:04x}:" + "/".join(f"{p:04x}" for p in TURZX_MODELS)}.get(
         device, DEVICE_IDS)
 
 
-def open_display(flipped: bool, device: str = "auto", portrait: bool = False) -> TuringRevA | TurzxUsb:
+def open_display(flipped: bool, device: str = "auto", portrait: bool = False,
+                 location: int | None = None) -> TuringRevA | TurzxUsb:
     """つながっているディスプレイを開く。
 
     auto は TURZX の 5.2 インチを先に探し、無ければ 3.5 インチ（rev A）。2 台を別々のプログラムに使うときは、
     3.5 か 5.2 を指定する（auto のままだと、5.2 インチを外したときに、もう一方のプログラムの 3.5 インチを取りに行く）。
+    3.5 インチを 2 台使うときは、``location``（USB の位置）でどちらかを選ぶ（ID もシリアル番号も同じため）。
     """
+    if location is not None:
+        return TuringRevA(UsbTransport.open(location), flipped=flipped, portrait=portrait)
     if device != "3.5":
         try:
             transport, pid = TurzxUsbTransport.open()
@@ -185,29 +202,34 @@ def cmd_probe(args) -> int:
         return 1
     for device in devices:
         name = known.get((device.idVendor, device.idProduct), "対応していない ID")
-        print(f"{device.idVendor:04x}:{device.idProduct:04x} {name} bus={device.bus} address={device.address}")
+        print(f"{device.idVendor:04x}:{device.idProduct:04x} {name} bus={device.bus} address={device.address} "
+              f"位置 0x{location_id(device.bus, device.port_numbers):08x}")
         _describe(device)
     found = {(d.idVendor, d.idProduct) for d in devices} & known.keys()
     if not found:
         print("対応している ID の機器がありません")
         return 1
     failed = False
-    # 2 台をつないでいると、片方はもう一方の常駐が使っていて確保できない。それでも残りの機器を確かめる
-    for vid, pid in sorted(found):
+    # 2 台をつないでいると、片方はもう一方の常駐が使っていて確保できない。それでも残りの機器を確かめる。
+    # 3.5 インチは同じ ID の 2 台がありうるので、位置ごとに確かめる（--location に書く値）
+    targets = [(TURZX_VID, pid, None) for vid, pid in sorted(found) if vid == TURZX_VID]
+    targets += [(VID, PID, location_id(d.bus, d.port_numbers)) for d in devices if (d.idVendor, d.idProduct) == (VID, PID)]
+    for vid, pid, location in targets:
+        label = known[(vid, pid)] + ("" if location is None else f"（位置 0x{location:08x}）")
         try:
             if vid == TURZX_VID:
                 TurzxUsbTransport.open()[0].close()
             else:
-                UsbTransport.open().close()
-            print(f"{known[(vid, pid)]}: インターフェースを確保できました")
+                UsbTransport.open(location).close()
+            print(f"{label}: インターフェースを確保できました")
         except Exception as e:  # noqa: BLE001 - 原因をそのまま見せる
-            print(f"{known[(vid, pid)]}: インターフェースを確保できません: {e!r}")
+            print(f"{label}: インターフェースを確保できません: {e!r}")
             failed = True
     return 1 if failed else 0
 
 
 def cmd_test_pattern(args) -> int:
-    display = open_display(args.flip, args.device, args.portrait)
+    display = open_display(args.flip, args.device, args.portrait, args.location)
     try:
         display.initialize(args.brightness)
         display.show(render_test_pattern((display.width, display.height)))
@@ -312,7 +334,7 @@ class Runner(_Resident):
 
     def _connect(self) -> bool:
         try:
-            display = open_display(self.args.flip, self.args.device)
+            display = open_display(self.args.flip, self.args.device, location=getattr(self.args, "location", None))
         except DeviceNotFound:
             if not self.waiting_logged:
                 log.info("ディスプレイの接続を待っています（%s）", device_ids(self.args.device))
@@ -475,7 +497,8 @@ class MonitorRunner(_Resident):
 
     def _connect(self) -> bool:
         try:
-            display = open_display(self.args.flip, self.args.device, self.args.portrait)
+            display = open_display(self.args.flip, self.args.device, self.args.portrait,
+                                   getattr(self.args, "location", None))
             display.initialize(self.args.brightness)
         except DeviceNotFound:
             if not self.waiting_logged:
@@ -530,8 +553,7 @@ class MonitorRunner(_Resident):
                 continue
             if not self._unblank("異常が起きた（席を離れています）" if away else "操作が戻った"):
                 continue
-            image = monitor_screen.render(self.status, self.assessment, self.config, self.error,
-                                          portrait=self.args.portrait)
+            image = self._render()
             frame = image.tobytes()
             if frame != self.last_frame:
                 if not self._operate(lambda: self.display.show(image)):
@@ -543,6 +565,71 @@ class MonitorRunner(_Resident):
             Runner._close(self.display)
         log.info("終了しました")
         return 0
+
+    def _render(self) -> Image.Image:
+        return monitor_screen.render(self.status, self.assessment, self.config, self.error,
+                                     portrait=self.args.portrait)
+
+
+class LocalRunner(MonitorRunner):
+    """この Mac の状態（local_monitor）を ``interval`` 秒ごとに読み、変わったときだけ送る。
+
+    画面はサーバーの状態の画面の横置きと同じ。画面全体を赤にする異常は無く、異常は見出しにオレンジで出す。
+    メモリの逼迫の段階とスワップの量は、変わったときにログへ残す（再起動するとスワップの記録が消え、
+    いつ・どれだけ使ったかを後から追えなかったため。2026-10-15）。
+    """
+
+    def __init__(self, args, reader=None):
+        config = MonitorConfig(title=args.title, region="-", keychain_service="-", metrics=local_monitor.SPECS)
+        super().__init__(args, config, reader or local_monitor.LocalReader(args.ssd))
+        self.note: str | None = None
+        self.pressure: int | None = None
+        self.swap_step: float | None = None
+        self.read_error = False
+
+    def fetch(self):
+        try:
+            reading = self.reader.fetch()
+        except Exception:  # noqa: BLE001 - 読めない値があっても常駐は止めない（前回の値を残す）
+            if not self.read_error:
+                log.exception("この Mac の値を読めません")
+                self.read_error = True
+            return self.assessment
+        if self.read_error:
+            log.info("この Mac の値を読めるようになりました")
+            self.read_error = False
+        self.status, self.note = reading.status, reading.note
+        swap_step = round(reading.swap / local_monitor.GIB * 2) / 2  # 0.5 GB 刻みで変わったときだけ残す
+        if reading.pressure != self.pressure or swap_step != self.swap_step:
+            log.info("メモリの逼迫の段階 %d、スワップ %.1f GB", reading.pressure, reading.swap / local_monitor.GIB)
+            self.pressure, self.swap_step = reading.pressure, swap_step
+        if reading.warnings != self.warnings:
+            log.info("見出しの注意: %s", " / ".join(reading.warnings) or "なし")
+            self.warnings = reading.warnings
+        return Assessment((), reading.warnings, frozenset())
+
+    def _render(self) -> Image.Image:
+        return monitor_screen.render(self.status, self.assessment, self.config, note=self.note)
+
+
+def cmd_local(args) -> int:
+    args.device, args.portrait = "3.5", False  # 3.5 インチの横置きだけ（CPU の 2 行目が縦置きの区画に収まらないため）
+    args.title = args.title or local_monitor.machine_name()
+    if args.preview:
+        now = datetime.now(timezone.utc)
+        if args.demo:
+            reading = local_monitor.build(local_monitor.demo_sample(args.demo, now), now)
+        else:
+            reading = local_monitor.LocalReader(args.ssd).fetch(now)
+        config = MonitorConfig(title=args.title, region="-", keychain_service="-", metrics=local_monitor.SPECS)
+        monitor_screen.render(reading.status, Assessment((), reading.warnings, frozenset()), config,
+                              note=reading.note).save(args.preview)
+        print(args.preview)
+        return 0
+    runner = LocalRunner(args)
+    signal.signal(signal.SIGTERM, runner.request_stop)
+    signal.signal(signal.SIGINT, runner.request_stop)
+    return runner.loop()
 
 
 def cmd_monitor(args) -> int:
@@ -607,12 +694,17 @@ def main(argv: list[str] | None = None) -> int:
 
     for name, func, help_text in (("test-pattern", cmd_test_pattern, "向きと色の確認画面を出す"),
                                   ("run", cmd_run, "常駐して表示し続ける"),
-                                  ("monitor", cmd_monitor, "サーバーの状態を表示し続ける（monitor.toml）")):
+                                  ("monitor", cmd_monitor, "サーバーの状態を表示し続ける（monitor.toml）"),
+                                  ("local", cmd_local, "この Mac の状態（CPU・メモリ・ディスク・SSD）を表示し続ける"
+                                                       "（3.5 インチ・横置き）")):
         p = sub.add_parser(name, help=help_text)
         p.add_argument("--brightness", type=int, default=30, help="明るさ 0〜100（既定: 30）")
         p.add_argument("--flip", action="store_true", help="上下を反転する（ケーブルの向きに合わせる）")
-        p.add_argument("--device", choices=DEVICES, default="auto",
-                       help="使うディスプレイ（既定: auto は 5.2 インチを先に探す。2 台を使い分けるときは指定する）")
+        if name != "local":
+            p.add_argument("--device", choices=DEVICES, default="auto",
+                           help="使うディスプレイ（既定: auto は 5.2 インチを先に探す。2 台を使い分けるときは指定する）")
+        p.add_argument("--location", type=_location,
+                       help="3.5 インチを USB の位置で選ぶ（probe が出す「位置 0x…」。同じ 3.5 インチを 2 台つなぐときに使う）")
         p.set_defaults(func=func)
         if name == "run":
             p.add_argument("--interval", type=int, default=120, help="取得の間隔（秒、既定: 120）")
@@ -621,7 +713,15 @@ def main(argv: list[str] | None = None) -> int:
             add_gemini_options(p)
             p.add_argument("--gemini-interval", type=int, default=900,
                            help="Gemini の取得の間隔（秒、既定: 900。agy の実行に約 6 秒かかるため長めにする）")
-        if name in ("run", "monitor"):
+        if name == "local":
+            p.add_argument("--interval", type=int, default=60, help="取得の間隔（秒、既定: 60。CPU はこの間の平均）")
+            p.add_argument("--title", help="見出しの名前（既定: 機種名。例: Mac mini）")
+            p.add_argument("--ssd", default="/Volumes/SSD",
+                           help="4 つ目のリングに出す外付けのディスクの場所（既定: /Volumes/SSD）")
+            p.add_argument("--preview", help="ディスプレイに送らず、画像をこのパスに保存して終わる")
+            p.add_argument("--demo", choices=("normal", "warning"),
+                           help="--preview で、この Mac を読まず見本の値で描く（warning はメモリの逼迫）")
+        if name in ("run", "monitor", "local"):
             p.add_argument("--away-minutes", type=int, default=DEFAULT_AWAY_MINUTES,
                            help=f"キーボード・マウスをこの分数触らなければ消灯する（焼き付き対策。既定: {DEFAULT_AWAY_MINUTES}。0 で消灯しない）")
         if name in ("test-pattern", "monitor"):
@@ -640,8 +740,10 @@ def main(argv: list[str] | None = None) -> int:
         parser.error("--gemini-interval は 300 秒以上にしてください")
     if getattr(args, "gemini", False) and args.theme != "gauge":
         parser.error("--gemini はゲージ型の画面（--theme gauge）で使ってください")
-    if getattr(args, "demo", None) and args.command == "monitor" and not args.preview:
-        parser.error("monitor の --demo は --preview と一緒に使ってください")
+    if getattr(args, "demo", None) and args.command in ("monitor", "local") and not args.preview:
+        parser.error(f"{args.command} の --demo は --preview と一緒に使ってください")
+    if getattr(args, "location", None) is not None and getattr(args, "device", "3.5") == "5.2":
+        parser.error("--location は 3.5 インチを選ぶためのものです（--device 5.2 とは一緒に使えません）")
     if not 0 <= getattr(args, "away_minutes", 0) <= 1440:
         parser.error("--away-minutes は 0〜1440 にしてください")
     # 範囲外の値は接続した時点で初めて失敗し、run が初期化を繰り返し続けるため、ここで止める

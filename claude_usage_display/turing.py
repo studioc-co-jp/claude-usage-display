@@ -119,6 +119,32 @@ def _libusb_backend():
     return backend
 
 
+def location_id(bus: int, ports) -> int:
+    """macOS の USB の位置（``system_profiler`` の Location ID）。
+
+    上の 8 ビットがバス、続く 4 ビットずつがハブの端子の番号（根元から）。libusb はバスを Location ID の
+    上の 8 ビットから、端子の番号を 4 ビットずつから作るので、逆に組み立てると同じ値になる
+    （2026-10-15 にこの Mac の 17 台で ``ioreg -p IOUSB`` と一致することを確かめた）。
+    """
+    value = bus << 24
+    for depth, port in enumerate(ports or ()):
+        value |= port << (20 - 4 * depth)
+    return value
+
+
+def find_devices(location: int | None = None) -> list:
+    """3.5 インチ（``1a86:5722``）を探す。``location`` を渡すと、その位置の 1 台だけ。
+
+    同じ機種を 2 台つなぐと、USB の ID もシリアル番号（``USB35INCHIPSV2``）も同じなので、位置で見分ける。
+    """
+    import usb.core
+
+    devices = list(usb.core.find(find_all=True, idVendor=VID, idProduct=PID, backend=_libusb_backend()))
+    if location is not None:
+        devices = [d for d in devices if location_id(d.bus, d.port_numbers) == location]
+    return devices
+
+
 class UsbTransport:
     """1 回の ``write`` が 1 回の USB 転送になる送信路。"""
 
@@ -126,13 +152,15 @@ class UsbTransport:
         self.device = device
 
     @classmethod
-    def open(cls) -> "UsbTransport":
+    def open(cls, location: int | None = None) -> "UsbTransport":
         import usb.core
         import usb.util
 
-        device = usb.core.find(idVendor=VID, idProduct=PID, backend=_libusb_backend())
-        if device is None:
-            raise DeviceNotFound(f"{VID:04x}:{PID:04x} が接続されていません")
+        devices = find_devices(location)
+        if not devices:
+            where = "" if location is None else f"（位置 0x{location:08x}）"
+            raise DeviceNotFound(f"{VID:04x}:{PID:04x}{where} が接続されていません")
+        device = devices[0]
         try:
             device.set_configuration()
         except usb.core.USBError:

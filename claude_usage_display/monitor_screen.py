@@ -32,6 +32,9 @@ GREEN = (48, 209, 88)  # HIG の Green（ダーク）
 WHITE = (255, 255, 255)
 LOGO_RISE = 5.5  # ロゴの縦の中心を、名前の基準線からこれだけ上げる（利用枠の画面の見出しのアイコンと同じ）
 TITLE_GAP = 8  # 名前と、右の時刻・同じ行の監視の状態との間
+# 下の行が 2 行以上のときの行の間隔（この Mac の状態の画面の CPU の「性能」「効率」。1 行目はしきい値と同じ位置。
+# 2026-10-15、名前の高さをサーバーの画面とそろえる案をユーザーが選んだ）
+DETAIL_LINE = 18
 
 
 @dataclass(frozen=True)
@@ -127,8 +130,12 @@ def _alert_text(assessment: Assessment) -> str:
 
 
 def render(status: ServerStatus | None, assessment: Assessment | None, config: MonitorConfig,
-           fetch_error: str | None = None, portrait: bool = False) -> Image.Image:
-    """``status`` は最後に取れた値（まだ無ければ None）。``fetch_error`` は直近の取得の失敗の説明。"""
+           fetch_error: str | None = None, portrait: bool = False, note: str | None = None) -> Image.Image:
+    """``status`` は最後に取れた値（まだ無ければ None）。``fetch_error`` は直近の取得の失敗の説明。
+
+    ``note`` は、異常が無いときに見出しの行へ緑の点と出す文言（無ければ、監視の状態があるとき「監視 正常」）。
+    この Mac の状態の画面が、最後のバックアップの時刻を出すのに使う。
+    """
     layout = PORTRAIT if portrait else LANDSCAPE
     width = layout.size[0]
     red = assessment is not None and assessment.red
@@ -148,7 +155,7 @@ def render(status: ServerStatus | None, assessment: Assessment | None, config: M
             color = WHITE if spec.label in alerting else faint
             track = _mix(WHITE, RED, 0.22)
         else:
-            tint = "normal" if value is None else warning_tint(value, spec.threshold)
+            tint = "normal" if value is None else (metrics[index].tint or warning_tint(value, spec.threshold))
             color = {"normal": BLUE, "warning": ORANGE, "critical": RED}[tint]
             track = _mix(SECONDARY if value is None else color, BACKGROUND, DARK_TRACK_MIX)
         shapes.ring(x + ring_x, y + ring_y, radius, ring_width, value, color, track)
@@ -177,8 +184,8 @@ def render(status: ServerStatus | None, assessment: Assessment | None, config: M
     else:
         message = fetch_error or (assessment.warnings[0] if assessment and assessment.warnings else None)
         warn = message is not None
-        if message is None and status and status.monitor is not None:
-            message = "監視 正常"
+        if message is None and status:
+            message = note if note is not None else ("監視 正常" if status.monitor is not None else None)
         if message:
             dot_space = layout.dot_radius * 2 + 5
             message_font = fit_font(message, pill_width - 20, layout.status_size, SMALL_WEIGHT)
@@ -230,6 +237,9 @@ def render(status: ServerStatus | None, assessment: Assessment | None, config: M
         draw.text((left, y + number_y), number, font=number_font, fill=strong, anchor="ls")
         if value is not None:
             draw.text((left + number_width + gap, y + number_y), "%", font=unit_font, fill=faint, anchor="ls")
-        draw.text((x + threshold_x, y + threshold_y), f"しきい値 {spec.threshold:g}%",
-                  font=font(threshold_size, SMALL_WEIGHT), fill=faint, anchor=threshold_anchor)
+        detail = metrics[index].detail if metrics and metrics[index].detail is not None else None
+        lines = detail if detail is not None else (f"しきい値 {spec.threshold:g}%",)
+        for line_index, line in enumerate(lines):
+            draw.text((x + threshold_x, y + threshold_y + DETAIL_LINE * line_index), line,
+                      font=font(threshold_size, SMALL_WEIGHT), fill=faint, anchor=threshold_anchor)
     return image

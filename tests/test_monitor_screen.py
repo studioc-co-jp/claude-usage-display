@@ -95,6 +95,47 @@ class MonitorScreenTest(unittest.TestCase):
         self.assertEqual(image.getpixel(below_one_line), (255, 255, 255))
 
 
+class LocalScreenTest(unittest.TestCase):
+    """この Mac の状態の画面（local）が使う、下の行の量・色の決め打ち・見出しの文言（2026-10-15）。"""
+
+    def render(self, **overrides):
+        from claude_usage_display import local_monitor as lm
+        from tests.test_local_monitor import NOW as LOCAL_NOW
+        from tests.test_local_monitor import sample
+
+        reading = lm.build(sample(**overrides), LOCAL_NOW)
+        cfg = sm.MonitorConfig(title="Mac mini", region="-", keychain_service="-", metrics=lm.SPECS)
+        return ms.render(reading.status, sm.Assessment((), reading.warnings, frozenset()), cfg, note=reading.note)
+
+    def test_cpu_has_a_second_line_below_the_first(self):
+        image = self.render()
+        x, y = ms.LANDSCAPE.cells[0]
+        threshold_x, threshold_y, _, size = ms.LANDSCAPE.threshold
+        second = [image.getpixel((x + threshold_x + dx, y + threshold_y + ms.DETAIL_LINE - dy))
+                  for dx in range(0, 60) for dy in range(1, size)]
+        self.assertTrue(any(p != BACKGROUND for p in second))
+        # メモリは 1 行だけ（2 行目の位置は空いている）
+        x, y = ms.LANDSCAPE.cells[1]
+        second = [image.getpixel((x + threshold_x + dx, y + threshold_y + ms.DETAIL_LINE - dy))
+                  for dx in range(0, 60) for dy in range(1, size)]
+        self.assertTrue(all(p == BACKGROUND for p in second))
+
+    def test_memory_ring_follows_the_pressure_level(self):
+        cx, cy, radius, width = ms.LANDSCAPE.ring
+        x, y = ms.LANDSCAPE.cells[1]
+        at_twelve = (round(x + cx), round(y + cy - radius + width / 2))  # 弧の始まり（12 時）
+        self.assertTrue(near(self.render(memory=30, pressure=2).getpixel(at_twelve), ORANGE))
+        self.assertTrue(near(self.render(memory=30, pressure=4).getpixel(at_twelve), RED))
+        self.assertFalse(near(self.render(memory=95, pressure=1).getpixel(at_twelve), ORANGE))
+
+    def test_note_is_shown_with_a_green_dot_and_warnings_replace_it(self):
+        header = lambda image: [image.getpixel((px, round(ms.LANDSCAPE.dot_y))) for px in range(116, 364)]
+        self.assertTrue(any(near(p, ms.GREEN) for p in header(self.render())))
+        warned = header(self.render(pressure=2))
+        self.assertTrue(any(near(p, ORANGE) for p in warned))
+        self.assertFalse(any(near(p, ms.GREEN) for p in warned))
+
+
 class HeaderTest(unittest.TestCase):
     def test_logo_sits_left_of_the_title_on_black_and_red(self):
         with tempfile.NamedTemporaryFile(suffix=".png", delete=False) as f:
