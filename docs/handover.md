@@ -295,6 +295,34 @@ scripts/uninstall-launch-agent.sh                                 # 自動起動
 - **Antigravity の枠も実機で一度出した**（ユーザーの指示「取りやめにした Antigravity も表示してみて」）。`--gemini` を付けて登録し直し、08:06:16 に接続、`agy` の取得も失敗なく通った（ログは専用のフォルダの `agy.log` の 1 回分だけ）。実際の値の 2 段の画面を見たうえで、**ユーザーは出さないに戻すと決めた**。08:07 に `--gemini` を外して登録し直した
 - 縦置き（`TurzxUsb` の `portrait`）は実機で試していない（この日は横置きだけを確かめた）
 
+### 4-12. 焼き付き対策（消灯）と、確かめる途中の Mac のフリーズ（2026-10-15）
+
+- **きっかけ**: 元の記事の作者（nuits_jp）から、token-dashboard に焼き付き防止を足したので参考に、と返信があった（ユーザーが X のスクリーンショットを共有）
+- **token-dashboard の焼き付き対策**（2026-10-12 の PR #42、コミット `8ccc63c`。`docs/usecases/USBディスプレイの焼き付きを防ぐ/`、`internal/display/service.go`・`away.go`、`internal/presence/watch_windows.go`）
+  - ずらし: 3 分ごとに、送る画像全体を (0,0)→(4,0)→(4,4)→(0,4)→(-4,4)→(-4,0)→(-4,-4)→(0,-4) の順にずらす。空いた所は画像の左上の角の色で埋める。間隔と量は固定
+  - 消灯: 無操作が `Away time`（既定 10 分、1〜240 分。`GetLastInputInfo` を 1 秒ごと）、モニターの電源オフ（`GUID_CONSOLE_DISPLAY_STATE`）、スリープ、ロックなど（`WTSRegisterSessionNotification`）のどれかで、黒の JPEG を送る。消灯中も取得は続ける
+- **ずらしは入れない**（ユーザーが決定）。ユーザーの「ずらすのは焼き付き防止に本当になると思う？」に、調べて答えた
+  - 液晶の残像は、同じ表示を長く続けると液晶の中にイオンがたまり直流の電圧が残ることで起きる（米国特許 10883049、UCF の論文 https://api.creol.ucf.edu/Publications/9435.pdf ）。一時的で、消せる（Apple https://support.apple.com/en-hk/100952 。対策としてスリープとスクリーンセーバーだけを挙げ、ずらしには触れない）
+  - Orient Display（https://www.orientdisplay.com/?p=414321 ）は、静止画を 20 分より長く出さない、動くスクリーンセーバー、表示の定期的な切り替えを挙げるが、ずらしの効き目の説明は無い。NEC の業務用液晶（LCD5710 の説明書）には「画像をゆっくり動かす」機能があるが、量と効果の記述は抜粋に無い。Samsung の Pixel Shift は有機 EL の焼き付きの対策として説明している
+  - 4 ピクセルずらして表示が変わるのは、色の境目から 4 ピクセル以内の画素だけ（黒地やリングの内側は変わらない）。画面の端との余白が ±4 ピクセル変わり、2026-10-15 にそろえた余白（左右・下とも 27 ピクセル）が崩れる
+  - 3.5 インチは IPS 液晶（CNX Software の 2022-04-29 の記事）。5.2 インチのパネルの種類は、記録した商品情報に無く、商品ページは本文を取得できず確定しなかった
+- **消灯の条件**: ユーザーは最初「Mac の画面が消えたとき」を選んだが、確かめる途中で次のことが起き、「無操作 10 分」（`HIDIdleTime`）に変えた（ユーザーが決定）
+  - `ioreg -r -c IOMobileFramebufferShim -d 1` の `CurrentPowerState` は、`pmset displaysleepnow` で Mac の画面（3 台）を消しても 1 のままだった（09:14:35〜09:15:01 に 1 秒ごとに記録。ユーザーの同意を得て消した）。Apple シリコンのこの Mac には `IODisplayWrangler` が無い（`pmset -g powerstate IODisplayWrangler` が失敗する）
+  - CoreGraphics の `CGDisplayIsAsleep`（SDK の `CGDisplayConfiguration.h` 285〜288 行目「Return true if the display is asleep」）は、ctypes で呼べて 3 台とも false を返した（09:15:58〜59。1 回目 35 ms）
+  - **その直後に Mac がフリーズし、ユーザーが再起動した**（起動 09:19:46）。記録（`/Library/Logs/DiagnosticReports/WindowServer-2026-10-15-091656.ips` と `WindowServer_2026-10-15-091720_Mac-mini.userspace_watchdog_timeout.spin`）から分かったこと:
+    - WindowServer のメインスレッドが 40 秒応答せず、watchdog が止めた（09:16:16 ごろから。記録の時点で画面の状態は OFF）
+    - メインスレッドは TCC の問い合わせ（`com.apple.tcc.preflight.kTCCServiceListenEvent`）で `tccd`（09:16:09 ごろ起動）を待ち、`tccd` は署名の確認で `trustd` を待っていた
+    - `trustd` は自分のデータベースのファイルを開く許可を、ESET の Endpoint Security の拡張（`com.eset.endpoint` 10.0.2100.0、「ESET Real-time File System Protection」）に求めて待ち、その ESET は同じ `trustd` を待っていた（互いに待つ行き詰まり）
+    - 新しいプロセスの起動（`xpcproxy` 145 件）とファイルを開く処理が EndpointSecurity の順番待ちで止まった。サーバーの状態の常駐の 09:16:22 の「Keychain に鍵がありません」もこの間の失敗
+    - 2 つの常駐は待ち状態で、この連鎖に入っていない。`CGDisplayIsAsleep` を問い合わせたスクリプトは、止まった時点では終わっていた。WindowServer の TCC の問い合わせがどのプロセスのためのものかは記録に無く、問い合わせとの関係は確定しなかった
+    - ESET の公式情報で、この組み合わせを扱ったものは見つからなかった（ESET の Mac 版でのフリーズの報告は、古い版でフォーラムに複数ある）
+  - `HIDIdleTime` は `ioreg -c IOHIDSystem -d 4` で読め、1 回 10 ms ほど。WindowServer にも TCC にも問い合わせない。この Mac は `pmset -g` の `displaysleep 10` なので、10 分で Mac の画面とほぼ同じ時に消える。ずれるのは、Safari などが画面のスリープを止めているとき（USB の 2 台だけが消える）と、ホットコーナーなどで画面をすぐに消したとき（USB の 2 台は 10 分まで点いたまま）
+- **作ったもの**（`presence.py`、`turing.py`・`turzx_usb.py` の `blank`・`unblank`、`__main__.py` の `_Resident`、`run`・`monitor` の `--away-minutes`（既定 10、0 で消灯しない））
+  - 5 秒ごとに無操作の時間を読む（`POLL_SECONDS`）。読めないときは消灯せずに表示を続け、警告を 1 回だけ記録する
+  - 3.5 インチは `SCREEN_OFF`（108）・`SCREEN_ON`（109）（ライブラリの `lcd_comm_rev_a.py` の `ScreenOff`・`ScreenOn` は、この命令を値 0 で送るだけ）。5.2 インチは消す命令が無いので、黒一色の不透明の PNG と明るさ 0。黒の JPEG は前の PNG に隠れる（§4-11）。どちらも実機で真っ暗になり、点け直しも正しく戻ることをユーザーが確かめた（09:33）
+  - 利用枠の常駐は、消灯中は取得しない（戻ったときに、止まっていた取得から始める）。サーバーの状態の常駐は取得を続け、画面全体が赤の異常のときは点灯して赤を出す（ユーザーが決定）
+  - 消灯までを 1 分にして launchd で動かし、ユーザーが実機で確かめた。ログ: 利用枠 09:53:38 消灯・09:56:01 点灯、サーバーの状態 09:53:40 消灯・09:56:05 点灯。その後、既定の 10 分で登録し直した（09:56:24・09:56:26 に接続）
+
 ## 5. 残っている作業（上から順に）
 
 1〜5 は 2026-10-05 に終えた（README.md、CLAUDE.md、requirements.txt と .gitignore、自動起動の作成と登録、git の初期化と push）。
