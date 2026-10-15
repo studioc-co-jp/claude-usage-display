@@ -8,7 +8,7 @@ from PIL import Image
 from claude_usage_display import monitor_screen as ms
 from claude_usage_display import server_monitor as sm
 from claude_usage_display.gauge import BACKGROUND, ICON_GAP, ICON_SIZE, ORANGE, RED
-from claude_usage_display.render import font
+from claude_usage_display.render import SMALL_WEIGHT, font
 from tests.test_server_monitor import NOW, config, status
 
 
@@ -30,8 +30,27 @@ class MonitorScreenTest(unittest.TestCase):
         image = self.render(status(values=(92, 61, 47, 3)))
         self.assertEqual(image.getpixel((2, 300)), RED)
         # CPU（左上）のリングの 3 時の位置は白、メモリ（右上）は薄い色
-        self.assertTrue(near(image.getpixel((20 + 52 + 48 - 5, 44 + 68)), (255, 255, 255)))
-        self.assertFalse(near(image.getpixel((250 + 52 + 48 - 5, 44 + 68)), (255, 255, 255)))
+        cx, cy, radius, width = ms.LANDSCAPE.ring
+        self.assertTrue(near(image.getpixel((round(20 + cx + radius - width / 2), 44 + cy)), (255, 255, 255)))
+        self.assertFalse(near(image.getpixel((round(250 + cx + radius - width / 2), 44 + cy)), (255, 255, 255)))
+
+    def test_landscape_puts_the_number_inside_the_ring(self):
+        # 2026-10-15 に、数字をリングの右からリングの中へ移した。リングの内側に数字の白があり、右には無い
+        image = self.render(status(values=(11, 61, 47, 3)))
+        cx, cy, radius, width = ms.LANDSCAPE.ring
+        inside = [image.getpixel((20 + x, 44 + y)) for x in range(round(cx - 20), round(cx + 20))
+                  for y in range(round(cy - 15), round(cy + 15))]
+        self.assertTrue(any(near(p, (255, 255, 255), 40) for p in inside))
+        label_x, label_y, _, _ = ms.LANDSCAPE.label
+        _, threshold_y, _, threshold_size = ms.LANDSCAPE.threshold
+        right = [image.getpixel((20 + x, 44 + y)) for x in range(label_x, 220)
+                 for y in range(round(label_y + 2), round(threshold_y - threshold_size))]
+        self.assertTrue(all(p == BACKGROUND for p in right))
+
+    def test_landscape_threshold_stays_left_of_the_divider(self):
+        threshold_x, _, _, threshold_size = ms.LANDSCAPE.threshold
+        end = ms.LANDSCAPE.cells[0][0] + threshold_x + font(threshold_size, SMALL_WEIGHT).getlength("しきい値 85%")
+        self.assertLess(end, ms.LANDSCAPE.dividers[0][0])
 
     def test_job_incidents_show_an_orange_dot_on_black(self):
         incidents = (sm.Incident("job", "nightly-backup", "直近の実行が失敗", None),)
