@@ -33,7 +33,7 @@ from pathlib import Path
 from PIL import Image, ImageDraw, ImageFont
 
 from .render import (CRITICAL_AT, HEIGHT, JST, SMALL_WEIGHT, WARNING_AT, WEEKDAYS, WIDTH, fit_font, font,
-                     format_remaining)
+                     format_remaining, nearest_minute)
 from .usage import Meter, Snapshot
 
 SCALE = 4  # 3.5 インチの画面で図形を描く倍率。大きい画面では、描く大きさが同じくらいになるよう下げる
@@ -188,6 +188,7 @@ def reset_lines(resets_at: datetime | None, now: datetime) -> tuple[str, str]:
     """リセットの日時と残り時間の 2 行。時刻は iOS の日本語表記にならい、時の先頭に 0 を付けない。"""
     if resets_at is None:
         return "--", ""
+    resets_at = nearest_minute(resets_at)
     if resets_at <= now:
         return "リセット済み", "次の取得で更新"
     local = resets_at.astimezone(JST)

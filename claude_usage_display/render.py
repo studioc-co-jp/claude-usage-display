@@ -98,9 +98,21 @@ def format_remaining(delta: timedelta) -> str:
     return f"あと{minutes}分"
 
 
+def nearest_minute(when: datetime) -> datetime:
+    """リセット時刻を最も近い分に丸める（表示は分までなので、切り捨てずに丸める）。
+
+    利用枠 API の ``resets_at`` は、同じ時刻のリセットでも取得のたびに 1 秒未満前後する。2026-10-15 に
+    3 回取ると、週次は 01:00:00.38・01:00:00.22・01:00:00.02（UTC）、Fable 週次は 3 回とも 01:00:00 ちょうど
+    だった（2026-10-05 の取得では週次が 00:59:59.96。``tests/fixtures/usage_response.json``）。分を切り捨てると、
+    同じ 10:00 のリセットが、週次だけ 9:59 と出る。
+    """
+    return (when + timedelta(seconds=30)).replace(second=0, microsecond=0)
+
+
 def format_reset(resets_at: datetime | None, now: datetime) -> str:
     if resets_at is None:
         return "リセット時刻なし"
+    resets_at = nearest_minute(resets_at)
     if resets_at <= now:
         return "リセット済み（次の取得で更新）"
     local = resets_at.astimezone(JST)

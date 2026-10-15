@@ -36,8 +36,8 @@ class FormatResetTest(unittest.TestCase):
         self.assertEqual(format_reset(NOW + timedelta(hours=10), NOW), "リセット 10/6(火) 01:24（あと10時間00分）")
 
     def test_days_ahead(self):
-        resets = datetime(2026, 10, 12, 0, 59, 59, tzinfo=timezone.utc)
-        self.assertEqual(format_reset(resets, NOW), "リセット 10/12(月) 09:59（あと6日18時間）")
+        resets = datetime(2026, 10, 12, 0, 59, 59, 962143, tzinfo=timezone.utc)  # API の 10:00 のリセット（1 秒未満早く返る）
+        self.assertEqual(format_reset(resets, NOW), "リセット 10/12(月) 10:00（あと6日18時間）")
 
     def test_past_and_missing(self):
         self.assertEqual(format_reset(NOW - timedelta(minutes=1), NOW), "リセット済み（次の取得で更新）")

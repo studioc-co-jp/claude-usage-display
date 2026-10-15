@@ -35,6 +35,15 @@ class ResetLinesTest(unittest.TestCase):
         self.assertEqual(gauge.reset_lines(NOW + timedelta(days=6, hours=17), NOW),
                          ("10/12(月) 8:24", "あと6日17時間"))
 
+    def test_rounds_to_the_nearest_minute(self):
+        # 同じ 10:00 のリセットが、API からは 1 秒未満前後して返る（週次 00:59:59.96・01:00:00.38、Fable 週次 01:00:00）
+        for resets in ("2026-10-12T00:59:59.962143+00:00", "2026-10-12T01:00:00.384311+00:00",
+                       "2026-10-12T01:00:00+00:00"):
+            self.assertEqual(gauge.reset_lines(datetime.fromisoformat(resets), NOW),
+                             ("10/12(月) 10:00", "あと6日18時間"))
+        self.assertEqual(gauge.reset_lines(NOW + timedelta(minutes=96, seconds=29), NOW), ("17:00", "あと1時間36分"))
+        self.assertEqual(gauge.reset_lines(NOW + timedelta(minutes=96, seconds=30), NOW), ("17:01", "あと1時間37分"))
+
     def test_missing_and_past(self):
         self.assertEqual(gauge.reset_lines(None, NOW), ("--", ""))
         self.assertEqual(gauge.reset_lines(NOW, NOW), ("リセット済み", "次の取得で更新"))
