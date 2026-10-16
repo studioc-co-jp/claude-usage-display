@@ -111,11 +111,17 @@ class ParseTest(unittest.TestCase):
         self.assertIsNone(lm.parse_cpu_kinds(""))
         self.assertIsNone(lm.parse_cpu_kinds('  +-o cpu1@1\n  "cluster-type" = <"E">'))  # cpu0 が無い
 
-    def test_tmectl_last_run(self):
-        text = ("> Backups\nLast run: 2026/10/15 8:35\nNext run: 2026/10/16 3:00\n\n> Snapshots\n\n"
-                "> Updater\nLast run: 2026/10/14 11:47\n")
-        self.assertEqual(lm.parse_tmectl(text), datetime(2026, 10, 15, 8, 35).astimezone(timezone.utc))
-        self.assertIsNone(lm.parse_tmectl("> Backups\nLast run: never\n"))
+    def test_backup_destination_and_snapshots(self):
+        # 2026-10-16 に launchd から実行した tmutil destinationinfo と diskutil apfs listSnapshots の形
+        info = ("====================================================\nName          : backup\nKind          : Local\n"
+                "Mount Point   : /Volumes/backup\nID            : A5588DE8-A588-4031-AFE9-AAC834E9AE46\n")
+        self.assertEqual(lm.parse_destination_mounts(info), ["/Volumes/backup"])
+        self.assertEqual(lm.parse_destination_mounts("Name : backup\nKind : Local\n"), [])  # 外れているとき
+        snapshots = ("|   Name:        com.apple.TimeMachine.2026-10-14-091707.backup\n"
+                     "|   Name:        com.apple.TimeMachine.2026-10-15-083315.backup\n"
+                     "    Name:        com.apple.TimeMachine.2026-10-16-062646.backup\n")
+        self.assertEqual(lm.parse_backup_snapshots(snapshots), datetime(2026, 10, 16, 6, 26, 46).astimezone(timezone.utc))
+        self.assertIsNone(lm.parse_backup_snapshots("No snapshots for disk5s1\n"))
 
     def test_volumes(self):
         total, free = lm.volume("/")

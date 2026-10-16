@@ -15,8 +15,10 @@
 - 見出しの行: 普段は最後のバックアップの時刻（緑）。異常があればその内容（オレンジ）。異常は、メモリの逼迫
   （スワップの量を添える）・熱による性能の制限・内蔵 SSD の SMART・バックアップが古いこと
 - 最後のバックアップの時刻は、Time Machine の設定ファイル（``SnapshotDates``）から読む。launchd から起動すると
-  フルディスクアクセスが無いため読めないので、そのときは TimeMachineEditor の ``tmectl info`` の「Last run」を使う
-  （成功したときだけ更新され、失敗した試行は「Last try」に入る。2026-10-15 にログで確かめた）
+  フルディスクアクセスが無いため読めないので、そのときはバックアップ先のディスクのスナップショットの名前
+  （``diskutil apfs listSnapshots`` の ``com.apple.TimeMachine.2026-10-16-062646.backup``。この Mac の時刻）から読む。
+  バックアップ先は ``tmutil destinationinfo`` の Mount Point。どちらも launchd から読めることを 2026-10-16 に確かめた
+  （``tmutil latestbackup`` はフルディスクアクセスが要る）。成功したバックアップだけがバックアップ先に残る
 """
 
 from __future__ import annotations
@@ -26,7 +28,6 @@ import logging
 import os
 import plistlib
 import re
-import shutil
 import subprocess
 import time
 from dataclasses import dataclass
@@ -46,7 +47,6 @@ THERMAL_WARNING = 2
 BACKUP_STALE = timedelta(hours=36)  # 毎日のバックアップが 1 回抜けたら気付けるように
 SMART_INTERVAL = 600  # 内蔵 SSD の SMART を読み直す間隔（秒）
 TM_PLIST = "/Library/Preferences/com.apple.TimeMachine.plist"
-TMECTL_CANDIDATES = ("/usr/local/bin/tmectl", "/opt/homebrew/bin/tmectl")  # launchd の PATH には入っていない
 GIB = 2 ** 30
 
 
@@ -265,13 +265,17 @@ def volume(path: str) -> tuple[int, int] | None:
         cf.CFRelease(url)
 
 
-def parse_tmectl(text: str) -> datetime | None:
-    """``tmectl info`` の「> Backups」の「Last run: 2026/10/15 8:35」（この Mac の時刻）。"""
-    match = re.search(r"> Backups\s*\nLast run: (\d{4})/(\d{1,2})/(\d{1,2}) (\d{1,2}):(\d{2})", text)
-    if not match:
+def parse_destination_mounts(text: str) -> list[str]:
+    """``tmutil destinationinfo`` の「Mount Point   : /Volumes/backup」（つながっているバックアップ先だけに出る）。"""
+    return [m.group(1).strip() for m in re.finditer(r"^Mount Point\s*:\s*(.+)$", text, re.MULTILINE)]
+
+
+def parse_backup_snapshots(text: str) -> datetime | None:
+    """``diskutil apfs listSnapshots`` の ``com.apple.TimeMachine.2026-10-16-062646.backup``（この Mac の時刻）の最新。"""
+    stamps = re.findall(r"com\.apple\.TimeMachine\.(\d{4}-\d{2}-\d{2}-\d{6})\.backup", text)
+    if not stamps:
         return None
-    year, month, day, hour, minute = map(int, match.groups())
-    return datetime(year, month, day, hour, minute).astimezone(timezone.utc)
+    return datetime.strptime(max(stamps), "%Y-%m-%d-%H%M%S").astimezone(timezone.utc)
 
 
 def last_backup() -> datetime | None:
@@ -283,9 +287,12 @@ def last_backup() -> datetime | None:
             return max(dates).replace(tzinfo=timezone.utc)  # plistlib の日時は UTC（タイムゾーン無し）
     except (OSError, plistlib.InvalidFileException):
         pass  # launchd から起動すると、フルディスクアクセスが無いので読めない
-    tmectl = shutil.which("tmectl") or next((p for p in TMECTL_CANDIDATES if os.path.exists(p)), None)
-    text = _run([tmectl, "info"]) if tmectl else None
-    return parse_tmectl(text) if text else None
+    found = []
+    for mount in parse_destination_mounts(_run(["/usr/bin/tmutil", "destinationinfo"]) or ""):
+        stamp = parse_backup_snapshots(_run(["/usr/sbin/diskutil", "apfs", "listSnapshots", mount], timeout=30) or "")
+        if stamp:
+            found.append(stamp)
+    return max(found) if found else None
 
 
 def backup_progress() -> tuple[bool, float | None]:
