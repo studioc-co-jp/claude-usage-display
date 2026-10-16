@@ -79,12 +79,14 @@ class TuringRevATest(unittest.TestCase):
         self.assertEqual(sum(map(len, chunks)), 480 * 320 * 2)
         self.assertTrue(all(len(c) % 64 == 0 for c in chunks))
 
-    def test_initialize_resyncs_then_sets_orientation_and_brightness(self):
+    def test_initialize_resyncs_then_sets_orientation_and_turns_the_screen_on(self):
         self.display.initialize(brightness=30)
         writes = self.transport.writes
         self.assertEqual(writes[0], encode_command(Command.DISPLAY_BITMAP, 0, 0, 319, 479))
-        self.assertEqual(sum(map(len, writes[1:-2])), 320 * 480 * 2)
-        self.assertEqual(writes[-2], encode_orientation(Orientation.LANDSCAPE))
+        self.assertEqual(sum(map(len, writes[1:-3])), 320 * 480 * 2)
+        self.assertEqual(writes[-3], encode_orientation(Orientation.LANDSCAPE))
+        # 前のプロセスが終わるときに消しているので、点けてから明るさを決める
+        self.assertEqual(writes[-2], encode_command(Command.SCREEN_ON))
         self.assertEqual(writes[-1], encode_command(Command.SET_BRIGHTNESS, 178))
 
     def test_blank_turns_the_screen_off_and_unblank_turns_it_back_on(self):
@@ -102,7 +104,7 @@ class TuringRevATest(unittest.TestCase):
         display = TuringRevA(self.transport, portrait=True)
         self.assertEqual((display.width, display.height), (320, 480))
         display.initialize(brightness=30)
-        self.assertEqual(self.transport.writes[-2], encode_orientation(Orientation.PORTRAIT))
+        self.assertEqual(self.transport.writes[-3], encode_orientation(Orientation.PORTRAIT))
         display.show(Image.new("RGB", (320, 480)))
         self.assertIn(encode_command(Command.DISPLAY_BITMAP, 0, 0, 319, 479), self.transport.writes)
         self.assertEqual(TuringRevA(FakeTransport(), flipped=True, portrait=True).orientation,
@@ -110,7 +112,7 @@ class TuringRevATest(unittest.TestCase):
 
     def test_flip_uses_reverse_landscape(self):
         TuringRevA(self.transport, flipped=True).initialize(brightness=30)
-        self.assertEqual(self.transport.writes[-2][6], 103)
+        self.assertEqual(self.transport.writes[-3][6], 103)
 
 
 class LocationTest(unittest.TestCase):

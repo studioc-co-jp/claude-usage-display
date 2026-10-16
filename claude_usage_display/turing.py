@@ -211,9 +211,14 @@ class TuringRevA:
         self._send_pixels(bytes(NATIVE_WIDTH * NATIVE_HEIGHT * 2))
 
     def initialize(self, brightness: int) -> None:
+        """同期を戻し、向きを決めて、画面を点ける。
+
+        前のプロセスが終わるときに SCREEN_OFF で消しているので、SCREEN_ON も送る
+        （消した後に明るさの命令だけで点くかは確かめていない。2026-10-17）。
+        """
         self.resync()
         self.transport.write(encode_orientation(self.orientation))
-        self.set_brightness(brightness)
+        self.unblank(brightness)
 
     def set_brightness(self, percent: int) -> None:
         self.transport.write(encode_command(Command.SET_BRIGHTNESS, brightness_level(percent)))

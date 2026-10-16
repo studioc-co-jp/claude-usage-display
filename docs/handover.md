@@ -377,6 +377,21 @@ scripts/uninstall-launch-agent.sh                                 # 自動起動
   - きっかけ: 夜中（3:00〜）のバックアップは毎晩失敗し、朝に Mac を使い始めた後の試行だけが成功していた。10/16 の Time Machine のログでは、3:28〜3:47 に「ロック中は読めない項目」（`unreadable while device locked`。位置情報の学習・LINE・音声認識の一時ファイル）の記録があり、4:07:12 に `Backup failed: BACKUP_FAILED_DEVICE_LOCKED (80)` で失敗した。TimeMachineEditor の記録では 3:00〜4:59 に操作が無く、5:07 の試行（操作のある時間に重なった）は 6:29 に成功した
   - launchd から読めるかを、確かめ用の LaunchAgent で確かめた: `tmutil latestbackup` は「requires Full Disk Access」で読めない。`tmutil destinationinfo`（バックアップ先の Mount Point）と `diskutil apfs listSnapshots /Volumes/backup`（`com.apple.TimeMachine.2026-10-16-062646.backup` のような名前。この Mac の時刻）は読める。設定ファイルの `SnapshotDates` と同じ時刻（6:26:46）が得られ、launchd から `local --preview` を動かすと見出しに「バックアップ 6:26」が出た
 
+### 4-16. 利用枠の常駐が `run --help` に置き換わり、5.2 インチが一晩点いたままだった（2026-10-17）
+
+- **気付いたこと**（05:00 ごろ、起きたユーザーが報告）: Mac の画面は消え、3.5 インチも消えていたが、5.2 インチは点いたままだった。3.5 インチは正しく動いていた（ログ: 00:46:20「席を離れたので消灯しました（無操作 10 分）」、05:04:11「操作が戻ったので点灯しました」）
+- **原因**: 2026-10-16 22:16:21、別の会話（サーバーの画面の確認済みの障害を足した作業。`d2e7c11`）が、テストの後に `scripts/install-launch-agent.sh --help >/dev/null 2>&1` を実行した。スクリプトは登録の前に本物の引数解析を通してオプションを確かめるが、argparse は説明を出すと 0 で終わるため、誤りなしとみなして `run --help` を常駐として登録した（`~/Library/LaunchAgents/jp.co.studioc.claude-usage-display.plist` の更新時刻 22:16）。出力を捨てていたので、その会話は気付いていない
+  - 前の常駐は 22:16:24 に SIGTERM で終わった。終わるときに画面を消さない作りだったので、5.2 インチは 22:16 の画面を明るさ 40 で約 6 時間 50 分出し続けた
+  - `run --help` は説明を出して 0 で終わり、launchd（`KeepAlive`）が約 10 秒ごとに起動し直した（ログに説明が 2,406 回）。ディスプレイを開かないので、席を離れたときの消灯も効かなかった
+  - `DRY_RUN=1` で再現した: 直す前のスクリプトは `--help` でも省略形の `--he` でも plist を作った
+- **ユーザーの指示で次を行った**
+  - 前の登録（`scripts/install-launch-agent.sh --device 5.2 --brightness 40 --icons "$HOME/Library/Application Support/claude-usage-display/icons"`）に戻した（05:12:45 に接続）
+  - 登録スクリプト: 引数の確かめで `SystemExit(0)`（コマンドの本体まで進まずに説明を出した）を見分け、「説明を表示しただけで、登録は変えていません」と出して 0 で終わる（`tests/test_install_script.py`。`DRY_RUN=1` で動かすので登録はしない）
+  - **3 つの常駐とも、終わるときに画面を消してから閉じる**（`_Resident._shutdown`。消灯中なら消し直さない。外れていれば黙って閉じる）。ユーザーが推奨どおりに決めた
+  - 3.5 インチの初期化（`TuringRevA.initialize`）で `SCREEN_ON` も送る。前のプロセスが終わるときに `SCREEN_OFF` で消すため。`SCREEN_OFF` の後に明るさの命令だけで点くかは確かめていない
+- **確かめたこと**: テストは 173 件すべて通過。終わるときに消すテストは、直す前の閉じ方に差し替えると落ちる。実機では、05:15〜05:16 に 2 つの常駐を `launchctl kickstart -k` で 2 回ずつ起動し直した（1 回目で新しいコードを読み込み、2 回目で「終わるときに消す → 次の起動で点ける」を通す）。2 回目の停止で 5.2 インチの常駐の終わりまでが 17 ミリ秒から 92 ミリ秒に延び（黒の画像と明るさ 0 の分）、どちらもエラーなく接続し直した。05:16:31 に利用枠の常駐を `launchctl bootout` で外すと、5.2 インチは真っ暗になり、3.5 インチは（消してから起動し直した後に）サーバーの状態の画面を出していることを、ユーザーが実機で確かめた。05:16:59 に同じ plist で読み込み直した
+- **登録スクリプトを確かめるときは `DRY_RUN=1` を付ける。**付けずに実行すると、`--help` 以外は本当に登録し直す
+
 ## 5. 残っている作業（上から順に）
 
 1〜5 は 2026-10-05 に終えた（README.md、CLAUDE.md、requirements.txt と .gitignore、自動起動の作成と登録、git の初期化と push）。

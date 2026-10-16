@@ -292,6 +292,23 @@ class _Resident:
         self.last_frame = None  # 送り直す
         return True
 
+    def _shutdown(self) -> None:
+        """画面を消してから閉じる（2026-10-17 ユーザーが決定）。
+
+        2026-10-16 に利用枠の常駐が止まったまま（登録が ``run --help`` に置き換わった）、5.2 インチは最後の画面を
+        一晩出し続け、席を離れたときの消灯も効かなかった。強制終了（SIGKILL）や異常終了では消せない。
+        """
+        if self.display is None:
+            return
+        try:
+            if not self.blanked:
+                self.display.blank()
+        except Exception as e:  # noqa: BLE001
+            if not is_disconnected(e):  # 外れていれば、消す必要も無い
+                log.exception("終わる前に画面を消せませんでした")
+        Runner._close(self.display)
+        self.display = None
+
     def _wait(self, seconds: float, wake=None) -> None:
         """``seconds`` 待つ。消灯を使うときは、その間も ``wake``（既定は席を離れたか）を確かめ、真になったら待つのをやめる。"""
         if not self.presence.enabled:
@@ -448,8 +465,7 @@ class Runner(_Resident):
                 if self.args.save_png:
                     image.save(self.args.save_png)
             self._wait(self._seconds_to_wait())
-        if self.display is not None:
-            self._close(self.display)
+        self._shutdown()
         log.info("終了しました")
         return 0
 
@@ -567,8 +583,7 @@ class MonitorRunner(_Resident):
                 self.last_frame = frame
             # 赤を出している間は、席を離れていても待つ（次の取得で異常が解けていれば消灯する）
             self._wait(max(0.0, self.next_fetch - time.monotonic()), wake=lambda: not red and self.presence.away())
-        if self.display is not None:
-            Runner._close(self.display)
+        self._shutdown()
         log.info("終了しました")
         return 0
 

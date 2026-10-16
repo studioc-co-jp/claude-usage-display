@@ -42,7 +42,10 @@ cd "$ROOT"
 
 # オプションの誤りは登録する前に止める（登録後に誤ると、launchd が 10 秒ごとに起動し直し続ける）。
 # 本物の引数解析を通し、コマンドの本体だけを差し替えて起動はしない。monitor は設定ファイルも読んで確かめる。
-"$PYTHON" - "$COMMAND" "$@" <<'EOF'
+# --help（-h・--he などの省略形も）は説明を出すだけで登録しない。引数解析は説明を出すと 0 で終わるため、
+# 誤りなしと区別できず、2026-10-16 に run --help が常駐として登録された（利用枠の画面が一晩止まった）。
+status=0
+"$PYTHON" - "$COMMAND" "$@" <<'EOF' || status=$?
 import sys
 
 import claude_usage_display.__main__ as cli
@@ -60,8 +63,18 @@ def check_monitor(args):
 cli.cmd_run = lambda args: 0
 cli.cmd_monitor = check_monitor
 cli.cmd_local = lambda args: 0
-sys.exit(cli.main(sys.argv[1:]))
+try:
+    code = cli.main(sys.argv[1:])
+except SystemExit as e:
+    # 誤りは 2 で終わる。0 で終わるのは、コマンドの本体まで進まずに説明を出したとき
+    sys.exit(3 if e.code in (0, None) else e.code)
+sys.exit(code)
 EOF
+if [ "$status" -eq 3 ]; then
+  echo "説明を表示しただけで、登録は変えていません" >&2
+  exit 0
+fi
+[ "$status" -eq 0 ] || exit "$status"
 
 mkdir -p "$(dirname "$TARGET")" "$(dirname "$LOG")"
 TMP=$(mktemp "${TARGET}.XXXXXX")

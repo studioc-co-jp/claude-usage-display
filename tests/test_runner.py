@@ -199,6 +199,11 @@ class StopAfterImage(FakeTurzxTransport):
         if decrypt(data)[0] == CMD_PNG:
             self.runner.stop.set()
 
+    def first_image(self) -> Image.Image:
+        """最初に送った画像（終わるときに消すための黒の画像は、その後に送られる）。"""
+        png = next(w for w in self.writes if decrypt(w)[0] == CMD_PNG)
+        return Image.open(io.BytesIO(png[512:])).convert("RGB")
+
 
 class TurzxRunnerTest(unittest.TestCase):
     def test_prefers_turzx_and_sends_letterboxed_portrait_png(self):
@@ -211,7 +216,7 @@ class TurzxRunnerTest(unittest.TestCase):
         rev_a.assert_not_called()
         self.assertTrue(transport.drained)
         self.assertEqual(transport.commands()[0], CMD_SYNC)
-        sent = Image.open(io.BytesIO(transport.writes[-1][512:])).convert("RGB")
+        sent = transport.first_image()
         self.assertEqual(sent.size, (720, 1280))
         # ゲージ型は 1280×720 で直接描く。横向きの左のリングの 3 時の位置（26% の弧の中）は、
         # 時計回りに 90 度回した縦長では (719 - y, x) に来る（逆に回すと、0% の右のリングの下の黒地に当たる）
@@ -230,7 +235,7 @@ class TurzxRunnerTest(unittest.TestCase):
         with mock.patch.object(cli.TurzxUsbTransport, "open", return_value=(transport, 0x0050)), \
                 mock.patch.object(cli, "fetch_snapshot", return_value=snapshot()):
             runner.loop()
-        sent = Image.open(io.BytesIO(transport.writes[-1][512:])).convert("RGB")
+        sent = transport.first_image()
         # 480×320 を 2.25 倍の 1080×720 にして中央に置くので、横向きの左右 100 ピクセルは黒い。
         # 縦長に回した後は、上下の 100 ピクセルに当たる
         self.assertEqual(sent.getpixel((360, 50)), (0, 0, 0))
@@ -373,7 +378,7 @@ class RecordingDisplay:
             self.on_show(image)
 
     def close(self):
-        pass
+        self.calls.append("close")
 
 
 class AwayTest(unittest.TestCase):
@@ -392,7 +397,7 @@ class AwayTest(unittest.TestCase):
                 mock.patch.object(cli, "fetch_snapshot", return_value=snapshot()) as fetch, \
                 self.assertLogs(cli.log, "INFO") as logs:
             runner.loop()
-        self.assertEqual(display.calls, ["initialize", "blank", "unblank 40", "show"])
+        self.assertEqual(display.calls, ["initialize", "blank", "unblank 40", "show", "blank", "close"])
         fetch.assert_called_once()  # 離れている間は取得しない
         messages = [r.getMessage() for r in logs.records]
         self.assertIn("席を離れたので消灯しました（無操作 10 分）", messages)
@@ -422,9 +427,48 @@ class AwayTest(unittest.TestCase):
                 mock.patch.object(cli, "datetime", mock.Mock(wraps=datetime, now=lambda tz=None: now)), \
                 self.assertLogs(cli.log, "INFO") as logs:
             runner.loop()
-        self.assertEqual(display.calls, ["initialize", "blank", "unblank 25", "show", "blank"])
+        # 終わるときは消灯中なので、消し直さずに閉じる
+        self.assertEqual(display.calls, ["initialize", "blank", "unblank 25", "show", "blank", "close"])
         self.assertEqual(shown, [cli.gauge.RED])
         self.assertIn("異常が起きた（席を離れています）ので点灯しました", [r.getMessage() for r in logs.records])
+
+
+class ShutdownTest(unittest.TestCase):
+    """終わるときは画面を消してから閉じる（最後の画面が点き続けないように。2026-10-17）。"""
+
+    def test_each_resident_blanks_the_screen_before_closing(self):
+        from tests.test_server_monitor import config, status
+
+        usage = cli.Runner(make_args())
+        server = cli.MonitorRunner(argparse.Namespace(flip=False, device="3.5", brightness=25, interval=0, portrait=False),
+                                   config(), reader=mock.Mock(**{"fetch.return_value": status()}))
+        for runner in (usage, server):
+            with self.subTest(runner=type(runner).__name__):
+                display = RecordingDisplay(on_show=lambda image, runner=runner: runner.stop.set())
+                with mock.patch.object(cli, "open_display", return_value=display), \
+                        mock.patch.object(cli, "fetch_snapshot", return_value=snapshot()), \
+                        self.assertLogs(cli.log, "INFO") as logs:
+                    runner.loop()
+                self.assertEqual(display.calls[-3:], ["show", "blank", "close"])
+                self.assertIsNone(runner.display)
+                self.assertEqual(logs.records[-1].getMessage(), "終了しました")
+
+    def test_a_display_unplugged_before_stopping_is_closed_quietly(self):
+        import usb.core
+
+        runner = cli.Runner(make_args())
+
+        class Unplugged(RecordingDisplay):
+            def blank(self):
+                raise usb.core.USBError("No such device", -4, errno.ENODEV)
+
+        display = Unplugged(on_show=lambda image: runner.stop.set())
+        with mock.patch.object(cli, "open_display", return_value=display), \
+                mock.patch.object(cli, "fetch_snapshot", return_value=snapshot()), \
+                self.assertLogs(cli.log, "INFO") as logs:
+            runner.loop()
+        self.assertEqual(display.calls[-1], "close")
+        self.assertEqual([r.levelname for r in logs.records], ["INFO"] * len(logs.records))
 
 
 class ArgumentsTest(unittest.TestCase):
