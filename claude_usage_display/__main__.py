@@ -34,7 +34,8 @@ from .antigravity import AntigravityError, AntigravityReader
 from .presence import DEFAULT_AWAY_MINUTES, POLL_SECONDS, Presence
 from .render import render_test_pattern
 from .server_monitor import (Assessment, AwsReader, ConfigError, FetchError, Incident, MetricValue, MonitorConfig,
-                             MonitorState, ServerStatus, assess, load_config)
+                             MonitorState, ServerStatus, acknowledge_line, assess, ended_acknowledgements,
+                             load_config)
 from .turing import PID, VID, DeviceNotFound, TuringRevA, UsbTransport, is_disconnected, location_id
 from .turzx_usb import MODELS as TURZX_MODELS
 from .turzx_usb import VID as TURZX_VID
@@ -485,6 +486,7 @@ class MonitorRunner(_Resident):
         self.error: str | None = None
         self.alerts: tuple[str, ...] = ()
         self.warnings: tuple[str, ...] = ()
+        self.acknowledged: tuple[str, ...] = ()
         self.last_frame: bytes | None = None
         self.waiting_logged = False
         self.assessment = None
@@ -535,6 +537,10 @@ class MonitorRunner(_Resident):
         if warnings != self.warnings:
             log.info("見出しの注意: %s", " / ".join(warnings) or "なし")
             self.warnings = warnings
+        acknowledged = assessment.acknowledged if assessment else ()
+        if acknowledged != self.acknowledged:
+            log.info("確認済みのため出さない障害: %s", " / ".join(acknowledged) or "なし")
+            self.acknowledged = acknowledged
         return assessment
 
     def loop(self) -> int:
@@ -632,12 +638,38 @@ def cmd_local(args) -> int:
     return runner.loop()
 
 
+def _print_incidents(config: MonitorConfig) -> int:
+    """いま障害中の監視を、``[state.acknowledged]`` に書き写す形で出す。確認済みの行のうち、もう続いていないものも出す。"""
+    try:
+        status = AwsReader(config).fetch()
+    except FetchError as e:
+        print(f"取得に失敗しました: {e.message}", file=sys.stderr)
+        return 1
+    if status.monitor is None:
+        print("設定に監視の状態ファイル（[state]）がありません", file=sys.stderr)
+        return 2
+    incidents = status.monitor.incidents
+    print("# いま障害中の監視。確認済みにするものを monitor.toml の [state.acknowledged] に写し、常駐を再起動する")
+    for incident in incidents:
+        line = acknowledge_line(config, incident)
+        mark = "（確認済み）" if config.acknowledges(incident) else ""
+        print(f"{line}{mark}" if line else f"# {incident.key}: 始まった時刻が無いため確認済みにできません")
+    if not incidents:
+        print("# なし")
+    for ended in ended_acknowledgements(config, incidents):
+        print(f"# 確認済みの {ended.key}（{ended.since.astimezone(render.JST):%m-%d %H:%M} から）は続いていません。"
+              "行を消してかまいません")
+    return 0
+
+
 def cmd_monitor(args) -> int:
     try:
         config = load_config(args.config)
     except ConfigError as e:
         print(e, file=sys.stderr)
         return 2
+    if args.incidents:
+        return _print_incidents(config)
     if args.preview:
         now = datetime.now(timezone.utc)
         error = None
@@ -732,6 +764,8 @@ def main(argv: list[str] | None = None) -> int:
             p.add_argument("--preview", help="ディスプレイに送らず、画像をこのパスに保存して終わる")
             p.add_argument("--demo", choices=("normal", "alert", "jobs"),
                            help="--preview で、AWS を呼ばず見本の値で描く")
+            p.add_argument("--incidents", action="store_true",
+                           help="いま障害中の監視を、確認済みにするとき monitor.toml に書き写す形で出して終わる")
 
     args = parser.parse_args(argv)
     if getattr(args, "interval", 60) < 60:

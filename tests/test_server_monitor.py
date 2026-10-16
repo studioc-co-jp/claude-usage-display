@@ -73,6 +73,31 @@ class ConfigTest(unittest.TestCase):
         (folder / "mark.png").write_bytes(b"")
         self.assertEqual(sm.load_config(str(path)).logo, str((folder / "mark.png").resolve()))
 
+    def write_acknowledged(self, lines: str) -> str:
+        text = EXAMPLE.read_text().replace("[state.names]", f"[state.acknowledged]\n{lines}\n\n[state.names]", 1)
+        with tempfile.NamedTemporaryFile("w", suffix=".toml", delete=False) as f:
+            f.write(text)
+        self.addCleanup(Path(f.name).unlink)
+        return f.name
+
+    def test_acknowledged_is_read_as_utc_seconds(self):
+        self.assertEqual(sm.load_config(str(EXAMPLE)).acknowledged, ())
+        # 時差を書かない時刻は日本時間とみなす。名前の無い項目（ledger）は種類だけで書く
+        path = self.write_acknowledged('"job:nightly-backup" = 2026-10-10T09:00:00+09:00\nledger = 2026-10-10T12:30:00')
+        self.assertEqual(sm.load_config(path).acknowledged,
+                         ((("job", "nightly-backup"), datetime(2026, 10, 10, 0, 0, tzinfo=timezone.utc)),
+                          (("ledger", "ledger"), datetime(2026, 10, 10, 3, 30, tzinfo=timezone.utc))))
+        with self.assertRaises(sm.ConfigError):
+            sm.load_config(self.write_acknowledged('"job:nightly-backup" = true'))
+
+    def test_acknowledge_line_can_be_pasted_back(self):
+        cfg = sm.load_config(str(EXAMPLE))
+        incident = sm.Incident("http", "top", "HTTP 503（期待 200）", NOW + timedelta(microseconds=700_000))
+        line = sm.acknowledge_line(cfg, incident)
+        self.assertEqual(line, '"http:top" = 2026-10-10T12:00:00+09:00  # トップ HTTP 503（期待 200）')
+        self.assertTrue(sm.load_config(self.write_acknowledged(line)).acknowledges(incident))
+        self.assertIsNone(sm.acknowledge_line(cfg, sm.Incident("ledger", "ledger", "違う", None)))
+
 
 class ParseTest(unittest.TestCase):
     def test_latest_datapoint(self):
@@ -140,6 +165,27 @@ class AssessTest(unittest.TestCase):
         result = sm.assess(status(values=(92, 61, 47, 3), incidents=incidents), config(), NOW)
         self.assertEqual(result.alerts, ("トップ HTTP 503（期待 200）", "CPU 92%（80% 以上が 5 分）"))
         self.assertEqual(result.warnings, ("ジョブ障害 1 件・監視の障害 1 件",))
+
+    def test_acknowledged_incident_is_left_out_while_it_lasts(self):
+        # 状態ファイルの since は秒の小数を持つ。設定には秒まで書くので、秒までで比べる
+        since = NOW - timedelta(hours=3) + timedelta(microseconds=400_000)
+        job = sm.Incident("job", "nightly-backup", "直近の実行が失敗", since)
+        site = sm.Incident("http", "top", "HTTP 503（期待 200）", since)
+        cfg = config(acknowledged=((("job", "nightly-backup"), NOW - timedelta(hours=3)),
+                                   (("http", "top"), NOW - timedelta(hours=3))))
+        result = sm.assess(status(incidents=(job, site)), cfg, NOW)
+        self.assertFalse(result.red)
+        self.assertEqual(result.warnings, ())
+        self.assertEqual(result.acknowledged, ("job:nightly-backup（10-10 09:00 から）", "http:top（10-10 09:00 から）"))
+        # 成功に戻ってから再び失敗すると since が変わるので、また出る
+        again = sm.Incident("job", "nightly-backup", "直近の実行が失敗", NOW - timedelta(minutes=5))
+        other = sm.Incident("job", "mail-check", "直近の実行が失敗", since)
+        result = sm.assess(status(incidents=(again, other)), cfg, NOW)
+        self.assertEqual(result.warnings, ("ジョブ障害 2 件",))
+        self.assertEqual(result.acknowledged, ())
+        self.assertEqual(sm.ended_acknowledgements(cfg, (again, other)),
+                         (sm.Incident("job", "nightly-backup", "", NOW - timedelta(hours=3)),
+                          sm.Incident("http", "top", "", NOW - timedelta(hours=3))))
 
     def test_stopped_monitor_comes_first(self):
         result = sm.assess(status(values=(92, 61, 47, 3), state_age=timedelta(minutes=6)), config(), NOW)

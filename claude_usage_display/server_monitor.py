@@ -9,6 +9,9 @@ git に入れない設定ファイル（``monitor.toml``。見本は ``monitor.e
   ``datapoints`` を書けば、アラームと同じ条件で赤になる。1 回だけの山では、リングだけが赤になる
   （2026-10-11。直近 1 回で赤にしていたときは、cron やデプロイの 1〜4 分の山でも画面全体が赤になっていた）
 - 監視の状態ファイルは、S3 の JSON（``{"<種類>:<名前>": {"alerting": bool, "reason": str, "since": 秒}}``）
+- 確認済みの障害（設定の ``[state.acknowledged]`` に ID と ``since`` を書いたもの）は、その障害が続く間だけ
+  判定から外す。解決を待つしかない障害を出し続けると、同じ監視で起きた別の失敗にも、ほかの障害にも気付けなく
+  なるため（2026-10-16 ユーザーが決定）。成功に戻ってから再び失敗すると ``since`` が変わるので、また出る
 - 鍵は Keychain に置いた読み取り専用の IAM ユーザーのもの（アカウント名 = アクセスキー ID、
   パスワード = シークレット）。値をログや画面に出さない
 """
@@ -71,10 +74,16 @@ class MonitorConfig:
     red_kinds: tuple[str, ...] = ("http", "tls")
     names: tuple[tuple[str, str], ...] = ()  # 監視の ID → 画面に出す名前
     logo: str | None = None  # 見出しの名前の左に出すロゴの画像（PNG）の絶対パス
+    # 確認済みの障害の (種類, 名前) と、障害が始まった時刻（UTC、秒まで）
+    acknowledged: tuple[tuple[tuple[str, str], datetime], ...] = ()
 
     def display_name(self, incident: "Incident") -> str:
         name = dict(self.names).get(incident.name, incident.name)
         return f"証明書 {name}" if incident.kind == "tls" else name
+
+    def acknowledges(self, incident: "Incident") -> bool:
+        """確認済みの障害か（ID と、障害が始まった時刻が同じ）。"""
+        return incident.since is not None and ((incident.kind, incident.name), _second(incident.since)) in self.acknowledged
 
 
 @dataclass(frozen=True)
@@ -103,6 +112,11 @@ class Incident:
     reason: str
     since: datetime | None
 
+    @property
+    def key(self) -> str:
+        """状態ファイルの項目の名前（``<種類>:<名前>``。名前の無い項目は種類だけ）。"""
+        return self.kind if self.name == self.kind else f"{self.kind}:{self.name}"
+
 
 @dataclass(frozen=True)
 class MonitorState:
@@ -119,11 +133,15 @@ class ServerStatus:
 
 @dataclass(frozen=True)
 class Assessment:
-    """``alerts`` があれば画面全体を赤にする。``warnings`` は見出しにオレンジで出す。"""
+    """``alerts`` があれば画面全体を赤にする。``warnings`` は見出しにオレンジで出す。
+
+    ``acknowledged`` は、確認済みのため出さなかった障害（ログに残す）。
+    """
 
     alerts: tuple[str, ...]
     warnings: tuple[str, ...]
     alerting_metrics: frozenset[str]
+    acknowledged: tuple[str, ...] = ()
 
     @property
     def red(self) -> bool:
@@ -140,6 +158,43 @@ def _logo_path(value, config_path: str) -> str | None:
     if not logo.is_file():
         raise ConfigError(f"logo の画像がありません: {logo}")
     return str(logo)
+
+
+def _second(at: datetime) -> datetime:
+    """時刻を UTC の秒までにする（状態ファイルの ``since`` は秒の小数を持つが、設定には秒まで書く）。"""
+    return at.astimezone(timezone.utc).replace(microsecond=0)
+
+
+def _incident_id(key: str) -> tuple[str, str]:
+    """状態ファイルの項目の名前を (種類, 名前) にする（``parse_state`` と同じ分け方）。"""
+    kind, _, name = key.partition(":")
+    return kind, name or kind
+
+
+def _acknowledged(table) -> tuple[tuple[tuple[str, str], datetime], ...]:
+    """``[state.acknowledged]`` を読む。時刻に時差が無ければ日本時間とみなす。"""
+    entries = []
+    for key, value in table.items():
+        if not isinstance(value, datetime):
+            raise ConfigError(f"acknowledged の {key}: 障害が始まった時刻を 2026-10-16T08:02:56+09:00 の形で書く"
+                              "（monitor --incidents が書き写す行を出す）")
+        entries.append((_incident_id(str(key)), _second(value if value.tzinfo else value.replace(tzinfo=JST))))
+    return tuple(sorted(entries))
+
+
+def acknowledge_line(config: MonitorConfig, incident: Incident) -> str | None:
+    """``[state.acknowledged]`` に書き写す 1 行（``since`` の無い障害は確認済みにできないので None）。"""
+    if incident.since is None:
+        return None
+    since = _second(incident.since).astimezone(JST).isoformat()
+    return f'"{incident.key}" = {since}  # {config.display_name(incident)} {incident.reason}'.rstrip()
+
+
+def ended_acknowledgements(config: MonitorConfig, incidents) -> tuple[Incident, ...]:
+    """確認済みの行のうち、もう続いていない障害（復旧したか、起き直して始まった時刻が変わった）。"""
+    current = {((i.kind, i.name), _second(i.since)) for i in incidents if i.since is not None}
+    return tuple(Incident(kind, name, "", since) for (kind, name), since in config.acknowledged
+                 if ((kind, name), since) not in current)
 
 
 def load_config(path: str) -> MonitorConfig:
@@ -163,7 +218,7 @@ def load_config(path: str) -> MonitorConfig:
             state_stale=timedelta(seconds=int(state.get("stale_seconds", 300))),
             red_kinds=tuple(state.get("red_kinds", ("http", "tls"))),
             names=tuple(sorted((str(k), str(v)) for k, v in state.get("names", {}).items())),
-            logo=_logo_path(raw.get("logo"), path))
+            logo=_logo_path(raw.get("logo"), path), acknowledged=_acknowledged(state.get("acknowledged", {})))
     except (KeyError, TypeError, ValueError) as e:
         raise ConfigError(f"設定ファイルの項目が足りないか、形が違います: {e!r}") from e
     if len(config.metrics) != 4:
@@ -212,8 +267,11 @@ def parse_state(document: dict, updated_at: datetime) -> MonitorState:
 
 
 def assess(status: ServerStatus, config: MonitorConfig, now: datetime) -> Assessment:
-    """アラートは気付くべき順（監視の停止 → サイト → 値が届かない → しきい値）に並べる。画面には先頭を出す。"""
-    stopped, site, missing, over, warnings, alerting_metrics = [], [], [], [], [], set()
+    """アラートは気付くべき順（監視の停止 → サイト → 値が届かない → しきい値）に並べる。画面には先頭を出す。
+
+    確認済みの障害は、赤にも件数にも入れない。
+    """
+    stopped, site, missing, over, warnings, alerting_metrics, acknowledged = [], [], [], [], [], set(), []
     for metric in status.metrics:
         spec = metric.spec
         if metric.value is None or metric.at is None or now - metric.at > spec.stale_after:
@@ -231,7 +289,9 @@ def assess(status: ServerStatus, config: MonitorConfig, now: datetime) -> Assess
             stopped.append(f"監視が止まっています（{status.monitor.updated_at.astimezone(JST):%H:%M} から）")
         others = []
         for incident in status.monitor.incidents:
-            if incident.kind in config.red_kinds:
+            if config.acknowledges(incident):
+                acknowledged.append(f"{incident.key}（{incident.since.astimezone(JST):%m-%d %H:%M} から）")
+            elif incident.kind in config.red_kinds:
                 site.append(f"{config.display_name(incident)} {incident.reason}".strip())
             else:
                 others.append(incident)
@@ -240,7 +300,8 @@ def assess(status: ServerStatus, config: MonitorConfig, now: datetime) -> Assess
             rest = len(others) - jobs
             warnings.append("・".join(text for text in (f"ジョブ障害 {jobs} 件" if jobs else "",
                                                         f"監視の障害 {rest} 件" if rest else "") if text))
-    return Assessment(tuple(stopped + site + missing + over), tuple(warnings), frozenset(alerting_metrics))
+    return Assessment(tuple(stopped + site + missing + over), tuple(warnings), frozenset(alerting_metrics),
+                      tuple(acknowledged))
 
 
 def warning_tint(value: float, threshold: float) -> str:
