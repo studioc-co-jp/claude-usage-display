@@ -510,8 +510,8 @@ class ArgumentsTest(unittest.TestCase):
         with mock.patch.object(cli, "cmd_local", return_value=0) as local:
             cli.main(["local"])
             args = local.call_args.args[0]
-            self.assertEqual((args.interval, args.away_minutes, args.ssd, args.location, args.title),
-                             (60, 10, "/Volumes/SSD", None, None))
+            self.assertEqual((args.interval, args.away_minutes, args.ssd, args.location, args.title, args.logo),
+                             (60, 10, "/Volumes/SSD", None, None, None))
             for text in ("0x00111000", "00111000"):
                 cli.main(["local", "--location", text])
                 self.assertEqual(local.call_args.args[0].location, 0x00111000)
@@ -520,7 +520,7 @@ class ArgumentsTest(unittest.TestCase):
             self.assertEqual(monitor.call_args.args[0].location, 0x00111000)
         for argv in (["local", "--location", "zz"], ["local", "--location", "0x100000000"], ["local", "--device", "3.5"],
                      ["monitor", "--device", "5.2", "--location", "0x00111000"], ["local", "--demo", "normal"],
-                     ["local", "--interval", "59"]):
+                     ["local", "--interval", "59"], ["local", "--logo", "/nonexistent/logo.png"]):
             with self.subTest(argv=argv), mock.patch.object(cli, "cmd_local") as local, \
                     mock.patch.object(cli, "cmd_monitor") as monitor, mock.patch("sys.stderr"):
                 with self.assertRaises(SystemExit) as raised:
@@ -528,6 +528,23 @@ class ArgumentsTest(unittest.TestCase):
                 self.assertEqual(raised.exception.code, 2)
                 local.assert_not_called()
                 monitor.assert_not_called()
+
+    def test_local_logo_is_an_absolute_path_and_reaches_the_screen(self):
+        import tempfile
+        from pathlib import Path
+
+        with tempfile.TemporaryDirectory() as directory:
+            logo = Path(directory) / "logo.png"
+            Image.new("RGBA", (40, 50), (255, 255, 255, 255)).save(logo)  # 白一色の見本（本物のロゴは使わない）
+            with mock.patch.object(cli, "cmd_local", return_value=0) as local, \
+                    mock.patch.dict("os.environ", {"HOME": directory}):
+                cli.main(["local", "--logo", "~/logo.png"])
+            args = local.call_args.args[0]
+            self.assertEqual(args.logo, str(logo.resolve()))
+            args.title = "Mac mini"
+            self.assertEqual(cli.LocalRunner(args, reader=mock.Mock()).config.logo, args.logo)
+            plain = argparse.Namespace(title="Mac mini", ssd="/Volumes/SSD")  # --logo が無い常駐（テストの引数など）
+            self.assertIsNone(cli._local_config(plain).logo)
 
     def test_preview_size(self):
         for argv, expected in ((["preview"], "480x320"), (["preview", "--size", "1280x720"], "1280x720")):

@@ -268,7 +268,9 @@ scripts/install-launch-agent.sh --device 5.2 --gemini            # 常駐に登�
 scripts/install-launch-agent.sh --local --location 0x00112000                     # 自動起動（解除は --local を付けて uninstall）
 ```
 
-オプションは `--brightness`・`--flip`・`--location`・`--interval`（既定 60 秒）・`--away-minutes`・`--title`（見出しの名前。既定は機種名）・`--ssd`・`--preview`・`--demo` です。
+オプションは `--brightness`・`--flip`・`--location`・`--interval`（既定 60 秒）・`--away-minutes`・`--title`（見出しの名前。既定は機種名）・`--logo`・`--ssd`・`--preview`・`--demo` です。
+
+`--logo 画像` を付けると、見出しの名前の左にその画像を出します。大きさと位置は、サーバーの状態の画面の `logo` と同じです（20 ピクセル角の枠。白一色・背景透明の PNG にします）。ファイルが無ければ、起動する前（自動起動なら登録する前）に止めます。**Apple のロゴの画像はこのリポジトリに入れていません。**Apple の [Guidelines for Using Apple Trademarks and Copyrights](https://www.apple.com/legal/intellectual-property/guidelinesfor3rdparties.html) は、Apple のロゴやアイコンを、Apple の書面による商標のライセンス（販売店契約など）による場合を除き、どの目的にも使えないとしています。使うときは画像を自分で用意し、手元のディスプレイに出すだけにしてください。README の画像は `--logo` を付けずに作っています。
 
 **3.5 インチを 2 台使うときは、`--location` で USB の位置を指定します。**同じ機種の 2 台は、USB の ID もシリアル番号（`USB35INCHIPSV2`）も同じなので、挿している USB の位置で見分けます。位置は `probe` が「位置 0x…」と出します（`system_profiler SPUSBHostDataType` の Location ID と同じ値です）。サーバーの状態の画面にも `--location` を付けて登録し直してください。付けないと、2 つの常駐が同じ 3.5 インチを取り合います。挿す端子を変えると位置も変わるので、そのときも登録し直します。
 

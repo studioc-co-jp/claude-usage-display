@@ -376,6 +376,9 @@ scripts/uninstall-launch-agent.sh                                 # 自動起動
 - **最後のバックアップの時刻の読み方を、`tmectl` からバックアップ先のスナップショットの名前に変えた**（2026-10-16）。ユーザーが TimeMachineEditor をアンインストールし、macOS の自動バックアップ（1 時間ごと）に戻すと決めたため
   - きっかけ: 夜中（3:00〜）のバックアップは毎晩失敗し、朝に Mac を使い始めた後の試行だけが成功していた。10/16 の Time Machine のログでは、3:28〜3:47 に「ロック中は読めない項目」（`unreadable while device locked`。位置情報の学習・LINE・音声認識の一時ファイル）の記録があり、4:07:12 に `Backup failed: BACKUP_FAILED_DEVICE_LOCKED (80)` で失敗した。TimeMachineEditor の記録では 3:00〜4:59 に操作が無く、5:07 の試行（操作のある時間に重なった）は 6:29 に成功した
   - launchd から読めるかを、確かめ用の LaunchAgent で確かめた: `tmutil latestbackup` は「requires Full Disk Access」で読めない。`tmutil destinationinfo`（バックアップ先の Mount Point）と `diskutil apfs listSnapshots /Volumes/backup`（`com.apple.TimeMachine.2026-10-16-062646.backup` のような名前。この Mac の時刻）は読める。設定ファイルの `SnapshotDates` と同じ時刻（6:26:46）が得られ、launchd から `local --preview` を動かすと見出しに「バックアップ 6:26」が出た
+- **見出しの Apple のロゴ**（2026-10-20、ユーザーの指示「apple のロゴを入れたい」）。`local` に `--logo`（画像のパス。無ければ引数の解析で止める）を足し、サーバーの状態の画面の `logo` と同じ描き方（20 ピクセル角の枠、名前の字の高さの中ほど）で名前の左に出す
+  - 画像は、macOS の SF Pro（`/System/Library/Fonts/SFNS.ttf`）の U+F8FF（Option-Shift-K で打てる Apple のロゴの文字）を、512 ポイントで白一色・背景透明に描き、周りの透明な余白を切って作った（316×388 ピクセル）。`~/Library/Application Support/claude-usage-display/icons/apple.png` に置いた。この文字を持つフォントは、SFNS・SFNSRounded・SFCompact・Helvetica・HelveticaNeue・LucidaGrande だった（ヒラギノ角ゴシック・Apple Symbols・Menlo は、存在しない文字と同じ形になる）
+  - **画像はリポジトリに入れない**（Claude・Gemini のロゴと同じ扱い）。Apple の「Guidelines for Using Apple Trademarks and Copyrights」（https://www.apple.com/legal/intellectual-property/guidelinesfor3rdparties.html 、Unauthorized Use の 2）は、Apple のロゴやアイコンを、書面による商標のライセンス（販売店契約など）による場合を除き、どの目的にも使えないとしている。ユーザーに伝えた。README の画像・テストは `--logo` を付けずに作る（テストは白い四角の見本を使う）
 
 ### 4-16. 利用枠の常駐が `run --help` に置き換わり、5.2 インチが一晩点いたままだった（2026-10-17）
 
@@ -498,7 +501,7 @@ scripts/uninstall-launch-agent.sh                                 # 自動起動
 11. **この Mac の状態の画面（`local`）を 2 台目の 3.5 インチで動かす**（2026-10-15 に実装した。§4-15。2 台目が届くのが再開の条件）
     1. 2 台目をつなぎ、`.venv/bin/python -m claude_usage_display probe` で 2 台の「位置 0x…」を控える。シリアル番号が同じ `USB35INCHIPSV2` かも見る
     2. サーバーの状態の常駐を、その 3.5 インチの位置を付けて登録し直す: `scripts/install-launch-agent.sh --monitor --device 3.5 --brightness 25 --location 0x…`（付けないと、2 つの常駐が同じ 3.5 インチを取り合う）
-    3. この Mac の状態の常駐を登録する: `scripts/install-launch-agent.sh --local --location 0x…`（明るさはサーバーの画面と見比べて決める）。天地が逆なら `--flip`
+    3. この Mac の状態の常駐を登録する: `scripts/install-launch-agent.sh --local --location 0x… --logo "$HOME/Library/Application Support/claude-usage-display/icons/apple.png"`（明るさはサーバーの画面と見比べて決める。ロゴは §4-15 の「見出しの Apple のロゴ」）。天地が逆なら `--flip`
     4. 実機の画面をユーザーに見てもらう（見出しの「バックアップ …」、CPU の 2 行目、ログ `~/Library/Logs/claude-usage-display-local.log`）
 
 ## 6. 公開するときに確かめること

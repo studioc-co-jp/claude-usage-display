@@ -25,6 +25,7 @@ import sys
 import threading
 import time
 from datetime import datetime, timedelta, timezone
+from pathlib import Path
 
 from PIL import Image
 
@@ -63,6 +64,14 @@ def _location(text: str) -> int:
     if not 0 <= value <= 0xFFFFFFFF:
         raise argparse.ArgumentTypeError(f"位置は 8 桁の 16 進数です（例: 0x00111000）: {text}")
     return value
+
+
+def _logo_file(text: str) -> str:
+    """--logo の値（画像のパス。``~`` を使える）。無いファイルは、常駐を登録する前に止める。"""
+    path = Path(text).expanduser().resolve()
+    if not path.is_file():
+        raise argparse.ArgumentTypeError(f"ロゴの画像がありません: {path}")
+    return str(path)
 
 
 def device_ids(device: str) -> str:
@@ -601,8 +610,7 @@ class LocalRunner(MonitorRunner):
     """
 
     def __init__(self, args, reader=None):
-        config = MonitorConfig(title=args.title, region="-", keychain_service="-", metrics=local_monitor.SPECS)
-        super().__init__(args, config, reader or local_monitor.LocalReader(args.ssd))
+        super().__init__(args, _local_config(args), reader or local_monitor.LocalReader(args.ssd))
         self.note: str | None = None
         self.pressure: int | None = None
         self.swap_step: float | None = None
@@ -633,6 +641,12 @@ class LocalRunner(MonitorRunner):
         return monitor_screen.render(self.status, self.assessment, self.config, note=self.note)
 
 
+def _local_config(args) -> MonitorConfig:
+    """この Mac の状態の画面の設定。見出しの名前と、名前の左のロゴ（--logo。無ければ出さない）だけを持つ。"""
+    return MonitorConfig(title=args.title, region="-", keychain_service="-", metrics=local_monitor.SPECS,
+                         logo=getattr(args, "logo", None))
+
+
 def cmd_local(args) -> int:
     args.device, args.portrait = "3.5", False  # 3.5 インチの横置きだけ（CPU の 2 行目が縦置きの区画に収まらないため）
     args.title = args.title or local_monitor.machine_name()
@@ -642,8 +656,7 @@ def cmd_local(args) -> int:
             reading = local_monitor.build(local_monitor.demo_sample(args.demo, now), now)
         else:
             reading = local_monitor.LocalReader(args.ssd).fetch(now)
-        config = MonitorConfig(title=args.title, region="-", keychain_service="-", metrics=local_monitor.SPECS)
-        monitor_screen.render(reading.status, Assessment((), reading.warnings, frozenset()), config,
+        monitor_screen.render(reading.status, Assessment((), reading.warnings, frozenset()), _local_config(args),
                               note=reading.note).save(args.preview)
         print(args.preview)
         return 0
@@ -763,6 +776,8 @@ def main(argv: list[str] | None = None) -> int:
         if name == "local":
             p.add_argument("--interval", type=int, default=60, help="取得の間隔（秒、既定: 60。CPU はこの間の平均）")
             p.add_argument("--title", help="見出しの名前（既定: 機種名。例: Mac mini）")
+            p.add_argument("--logo", type=_logo_file,
+                           help="見出しの名前の左に出すロゴの画像（白一色の PNG。既定: 出さない）")
             p.add_argument("--ssd", default="/Volumes/SSD",
                            help="4 つ目のリングに出す外付けのディスクの場所（既定: /Volumes/SSD）")
             p.add_argument("--preview", help="ディスプレイに送らず、画像をこのパスに保存して終わる")
