@@ -19,6 +19,7 @@ git に入れない設定ファイル（``monitor.toml``。見本は ``monitor.e
 from __future__ import annotations
 
 import json
+import re
 import subprocess
 import tomllib
 from dataclasses import dataclass
@@ -78,7 +79,7 @@ class MonitorConfig:
     acknowledged: tuple[tuple[tuple[str, str], datetime], ...] = ()
 
     def display_name(self, incident: "Incident") -> str:
-        name = dict(self.names).get(incident.name, incident.name)
+        name = dict(self.names).get(incident.name) or incident.label or incident.name
         return f"証明書 {name}" if incident.kind == "tls" else name
 
     def acknowledges(self, incident: "Incident") -> bool:
@@ -111,6 +112,7 @@ class Incident:
     name: str
     reason: str
     since: datetime | None
+    label: str = ""  # 状態ファイルの表示名（name）。無ければ ID で出す
 
     @property
     def key(self) -> str:
@@ -261,9 +263,20 @@ def parse_state(document: dict, updated_at: datetime) -> MonitorState:
         kind, _, name = key.partition(":")
         since = entry.get("since")
         incidents.append(Incident(kind, name or kind, str(entry.get("reason", "")),
-                                  datetime.fromtimestamp(since, timezone.utc) if isinstance(since, (int, float)) else None))
+                                  datetime.fromtimestamp(since, timezone.utc) if isinstance(since, (int, float)) else None,
+                                  str(entry.get("name", ""))))
     incidents.sort(key=lambda i: (i.since or updated_at, i.kind, i.name))
     return MonitorState(tuple(incidents), updated_at)
+
+
+# 見出しの注意に出す名前の上限（文字数）。長いと 480×320 の 1 行に理由が収まらない
+NAME_LIMIT = 20
+
+
+def short_reason(reason: str) -> str:
+    """見出しの 1 行に入る長さにした理由（最初の文だけ・括弧の中を除く）。"""
+    first = reason.split("。", 1)[0]
+    return re.sub(r"（[^）]*）", "", first).strip()
 
 
 def assess(status: ServerStatus, config: MonitorConfig, now: datetime) -> Assessment:
@@ -296,10 +309,19 @@ def assess(status: ServerStatus, config: MonitorConfig, now: datetime) -> Assess
             else:
                 others.append(incident)
         if others:
-            jobs = sum(1 for i in others if i.kind == "job")
-            rest = len(others) - jobs
-            warnings.append("・".join(text for text in (f"ジョブ障害 {jobs} 件" if jobs else "",
-                                                        f"監視の障害 {rest} 件" if rest else "") if text))
+            # 件数だけでは本物の障害かが分からず、毎回調べないと読めなかった（2026-10-22）。
+            # 1 件なら名前と理由、複数なら件数と先頭の名前を出す
+            first = config.display_name(others[0])
+            if len(first) > NAME_LIMIT:
+                first = first[:NAME_LIMIT - 1] + "…"
+            if len(others) == 1:
+                warnings.append(f"{first}: {short_reason(others[0].reason)}".rstrip(": "))
+            else:
+                jobs = sum(1 for i in others if i.kind == "job")
+                rest = len(others) - jobs
+                counts = "・".join(text for text in (f"ジョブ障害 {jobs} 件" if jobs else "",
+                                                     f"監視の障害 {rest} 件" if rest else "") if text)
+                warnings.append(f"{counts}（{first} ほか）")
     return Assessment(tuple(stopped + site + missing + over), tuple(warnings), frozenset(alerting_metrics),
                       tuple(acknowledged))
 

@@ -164,7 +164,27 @@ class AssessTest(unittest.TestCase):
                      sm.Incident("http", "top", "HTTP 503（期待 200）", None))
         result = sm.assess(status(values=(92, 61, 47, 3), incidents=incidents), config(), NOW)
         self.assertEqual(result.alerts, ("トップ HTTP 503（期待 200）", "CPU 92%（80% 以上が 5 分）"))
-        self.assertEqual(result.warnings, ("ジョブ障害 1 件・監視の障害 1 件",))
+        self.assertEqual(result.warnings, ("ジョブ障害 1 件・監視の障害 1 件（nightly-backup ほか）",))
+
+    def test_single_incident_shows_its_name_and_reason(self):
+        """件数だけでは本物の障害かが分からないので、1 件なら表示名と理由の最初の文を出す（括弧の中は除く）。"""
+        ledger = sm.Incident("ledger", "ledger", "本番の台帳（aaaa）と監視の設定（bbbb）が違う。開発機で流し直す",
+                             None, "監視の設定")
+        result = sm.assess(status(incidents=(ledger,)), config(), NOW)
+        self.assertEqual(result.warnings, ("監視の設定: 本番の台帳と監視の設定が違う",))
+        # 表示名が状態ファイルに無ければ ID で出す
+        job = sm.Incident("job", "nightly-backup", "直近の実行が失敗", None)
+        self.assertEqual(sm.assess(status(incidents=(job,)), config(), NOW).warnings,
+                         ("nightly-backup: 直近の実行が失敗",))
+
+    def test_long_name_is_cut(self):
+        job = sm.Incident("job", "x", "直近の実行が失敗", None, "a-very-long-job-name-for-the-screen")
+        self.assertEqual(sm.assess(status(incidents=(job,)), config(), NOW).warnings,
+                         ("a-very-long-job-nam…: 直近の実行が失敗",))
+
+    def test_state_name_becomes_the_label(self):
+        state = sm.parse_state({"job:x": {"alerting": True, "reason": "直近の実行が失敗", "name": "夜間の控え"}}, NOW)
+        self.assertEqual(state.incidents[0].label, "夜間の控え")
 
     def test_acknowledged_incident_is_left_out_while_it_lasts(self):
         # 状態ファイルの since は秒の小数を持つ。設定には秒まで書くので、秒までで比べる
@@ -181,7 +201,7 @@ class AssessTest(unittest.TestCase):
         again = sm.Incident("job", "nightly-backup", "直近の実行が失敗", NOW - timedelta(minutes=5))
         other = sm.Incident("job", "mail-check", "直近の実行が失敗", since)
         result = sm.assess(status(incidents=(again, other)), cfg, NOW)
-        self.assertEqual(result.warnings, ("ジョブ障害 2 件",))
+        self.assertEqual(result.warnings, ("ジョブ障害 2 件（nightly-backup ほか）",))
         self.assertEqual(result.acknowledged, ())
         self.assertEqual(sm.ended_acknowledgements(cfg, (again, other)),
                          (sm.Incident("job", "nightly-backup", "", NOW - timedelta(hours=3)),
