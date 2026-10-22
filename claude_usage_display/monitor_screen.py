@@ -124,6 +124,41 @@ def _logo(path: str) -> Image.Image:
     return load_mark(path)
 
 
+BIG_SIZE = 24   # 見出しの名前を出さない設定のとき、異常の文言の大きさ（1 行）
+BIG_SMALL = 21  # 1 行に収まらないとき、2 行にして使う大きさ（収まらなければ BIG_MIN まで下げる）
+BIG_MIN = 17
+
+
+def _big_lines(text: str, width: float, weight: int):
+    """異常の文言を、1 行（BIG_SIZE）か、収まらなければ 2 行（BIG_SMALL → BIG_MIN）にする。
+
+    2 行にするときは、区切りのよい位置（「名前: 理由」・「…　ほか N 件」・「件数（名前 ほか）」）を、この順に探し、
+    見つかった位置で収まる最も大きい大きさを使う。どこで分けても収まらなければ、字数で折り返し、2 行目は「…」で切る。
+    """
+    big = font(BIG_SIZE, weight)
+    if big.getlength(text) <= width:
+        return [text], big
+    for sep, tail in ((": ", ""), ("　ほか", "ほか"), ("（", "")):
+        head, found, rest = text.partition(sep)
+        if not found:
+            continue
+        parts = [head, (tail + rest).removesuffix("）")]
+        for size in range(BIG_SMALL, BIG_MIN - 1, -1):
+            small = font(size, weight)
+            if all(small.getlength(p) <= width for p in parts):
+                return parts, small
+    small = font(BIG_MIN, weight)
+    first = ""
+    for ch in text:
+        if small.getlength(first + ch) > width:
+            break
+        first += ch
+    rest = text[len(first):]
+    while rest and small.getlength(rest) > width:
+        rest = rest[:-2] + "…"
+    return [first, rest], small
+
+
 def _alert_text(assessment: Assessment) -> str:
     rest = len(assessment.alerts) - 1
     return assessment.alerts[0] + (f"　ほか {rest} 件" if rest else "")
@@ -170,14 +205,28 @@ def render(status: ServerStatus | None, assessment: Assessment | None, config: M
     pill = layout.pill
     if same_row:
         pill = (max(pill[0], round(title_left + title_font.getlength(config.title) + TITLE_GAP)), *pill[1:])
+    # 見出しの名前を出さない設定（横置きだけ）: 名前の分だけ、帯と文言を左へ広げる
+    big = not config.show_title and not portrait
+    if big:
+        pill = (title_left, pill[1], round(width - layout.inset - stamp_font.getlength(stamp) - TITLE_GAP), pill[3])
     center = (pill[0] + pill[2]) / 2
 
     # 監視の状態: 赤の状態は白い帯にアラート、それ以外は点と短い文言
     pill_width = pill[2] - pill[0]
     message = message_font = message_left = None
     warn = False
+    big_lines = big_font = None
+    if big:
+        big_text = _alert_text(assessment) if red else (
+            fetch_error or (assessment.warnings[0] if assessment and assessment.warnings else None))
+        if big_text:
+            big_lines, big_font = _big_lines(big_text, pill_width - 24, 6 if red else SMALL_WEIGHT)
     two_lines = red and layout.tall_pill is not None and len(assessment.alerts) > 1
-    if two_lines:
+    if big_lines:
+        if red:
+            box = (pill[0], 3, pill[2], 41) if len(big_lines) == 1 else (pill[0], 2, pill[2], 54)
+            shapes.pill(box, WHITE, radius=(box[3] - box[1]) / 2 if len(big_lines) == 1 else 14)
+    elif two_lines:
         shapes.pill(layout.tall_pill, WHITE, radius=16)
     elif red:
         shapes.pill(pill, WHITE)
@@ -199,10 +248,15 @@ def render(status: ServerStatus | None, assessment: Assessment | None, config: M
     ink = WHITE if red else LABEL
     if config.logo:
         paste_mark(image, _logo(config.logo), layout.inset, layout.title_baseline - LOGO_RISE, ICON_SIZE)
-    draw.text((title_left, layout.title_baseline), config.title, font=title_font, fill=ink, anchor="ls")
+    if not big:
+        draw.text((title_left, layout.title_baseline), config.title, font=title_font, fill=ink, anchor="ls")
     if stamp:
         draw.text((width - layout.inset, layout.title_baseline), stamp, font=stamp_font, fill=ink, anchor="rs")
-    if two_lines:
+    if big_lines:
+        baselines = (31,) if len(big_lines) == 1 else (25, 47)
+        for text, baseline in zip(big_lines, baselines):
+            draw.text((center, baseline), text, font=big_font, fill=RED if red else ORANGE, anchor="ms")
+    elif two_lines:
         first, second = layout.tall_baselines
         text = assessment.alerts[0]
         draw.text((center, first), text, font=fit_font(text, pill_width - 24, layout.alert_size, 6), fill=RED,

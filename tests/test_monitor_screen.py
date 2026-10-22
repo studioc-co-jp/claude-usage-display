@@ -170,5 +170,63 @@ class HeaderTest(unittest.TestCase):
         self.assertTrue(all(near(p, RED) for p in gap), gap)
 
 
+class HiddenTitleTest(unittest.TestCase):
+    """見出しの名前を出さない設定（show_title = false）。異常の文言を、見出しの行いっぱいに大きく出す。"""
+
+    WIDTH = 296
+
+    def test_short_text_stays_on_one_line_at_the_big_size(self):
+        lines, f = ms._big_lines("監視の障害 1 件", self.WIDTH, SMALL_WEIGHT)
+        self.assertEqual(lines, ["監視の障害 1 件"])
+        self.assertEqual(f.size, ms.BIG_SIZE)
+
+    def test_name_and_reason_are_split_on_two_lines(self):
+        lines, f = ms._big_lines("example job: 直近の実行が失敗", self.WIDTH, SMALL_WEIGHT)
+        self.assertEqual(lines, ["example job", "直近の実行が失敗"])
+        self.assertLessEqual(f.size, ms.BIG_SMALL)
+
+    def test_more_alerts_are_split_before_the_count_of_others(self):
+        lines, f = ms._big_lines("トップ HTTP 503（期待 200）　ほか 1 件", self.WIDTH, 6)
+        self.assertEqual(lines, ["トップ HTTP 503（期待 200）", "ほか 1 件"])
+        self.assertTrue(all(f.getlength(line) <= self.WIDTH for line in lines))
+
+    def test_job_count_is_split_before_the_bracket(self):
+        lines, _ = ms._big_lines("ジョブ障害 2 件（nightly-backup ほか）", self.WIDTH, SMALL_WEIGHT)
+        self.assertEqual(lines, ["ジョブ障害 2 件", "nightly-backup ほか"])
+
+    def test_text_that_cannot_be_split_is_cut_with_an_ellipsis(self):
+        lines, f = ms._big_lines("あ" * 60, self.WIDTH, SMALL_WEIGHT)
+        self.assertEqual(len(lines), 2)
+        self.assertTrue(lines[1].endswith("…"))
+        self.assertTrue(all(f.getlength(line) <= self.WIDTH for line in lines))
+        self.assertEqual(f.size, ms.BIG_MIN)
+
+    def test_title_text_is_not_drawn_and_the_warning_is_larger(self):
+        incidents = (sm.Incident("job", "nightly-backup", "直近の実行が失敗", None),)
+        st = status(incidents=incidents)
+        shown, hidden = config(title="example.com"), config(title="example.com", show_title=False)
+        with_title = ms.render(st, sm.assess(st, shown, NOW), shown)
+        without = ms.render(st, sm.assess(st, hidden, NOW), hidden)
+        left = ms.LANDSCAPE.inset
+        # 名前があった位置（ロゴの無い設定なので左端）は、黒のまま
+        self.assertTrue(any(not near(with_title.getpixel((x, 20)), BACKGROUND) for x in range(left, left + 60)))
+        self.assertTrue(all(near(without.getpixel((x, 20)), BACKGROUND) for x in range(left, left + 60)))
+        # 異常の文言（オレンジ）は、見出しの高さの外（35 ピクセルより下）にも、2 行目として出る
+        rows = [y for y in range(0, 56) if any(near(without.getpixel((x, y)), ORANGE, 40) for x in range(120, 360))]
+        self.assertGreater(max(rows) - min(rows), 30)
+
+    def test_default_keeps_the_title(self):
+        self.assertTrue(config().show_title)
+        self.assertFalse(config(show_title=False).show_title)
+
+    def test_portrait_ignores_the_setting(self):
+        st = status(values=(92, 61, 47, 3))
+        hidden = config(title="example.com", show_title=False)
+        shown = config(title="example.com")
+        a = ms.render(st, sm.assess(st, hidden, NOW), hidden, portrait=True)
+        b = ms.render(st, sm.assess(st, shown, NOW), shown, portrait=True)
+        self.assertEqual(a.tobytes(), b.tobytes())
+
+
 if __name__ == "__main__":
     unittest.main()

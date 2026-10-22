@@ -75,6 +75,8 @@ class MonitorConfig:
     red_kinds: tuple[str, ...] = ("http", "tls")
     names: tuple[tuple[str, str], ...] = ()  # 監視の ID → 画面に出す名前
     logo: str | None = None  # 見出しの名前の左に出すロゴの画像（PNG）の絶対パス
+    # False なら見出しの名前を出さず、横置きの見出しの行を、異常の表示に大きく使う（2026-10-22 ユーザーの指示）
+    show_title: bool = True
     # 確認済みの障害の (種類, 名前) と、障害が始まった時刻（UTC、秒まで）
     acknowledged: tuple[tuple[tuple[str, str], datetime], ...] = ()
 
@@ -220,7 +222,7 @@ def load_config(path: str) -> MonitorConfig:
             state_stale=timedelta(seconds=int(state.get("stale_seconds", 300))),
             red_kinds=tuple(state.get("red_kinds", ("http", "tls"))),
             names=tuple(sorted((str(k), str(v)) for k, v in state.get("names", {}).items())),
-            logo=_logo_path(raw.get("logo"), path), acknowledged=_acknowledged(state.get("acknowledged", {})))
+            logo=_logo_path(raw.get("logo"), path), show_title=bool(raw.get("show_title", True)), acknowledged=_acknowledged(state.get("acknowledged", {})))
     except (KeyError, TypeError, ValueError) as e:
         raise ConfigError(f"設定ファイルの項目が足りないか、形が違います: {e!r}") from e
     if len(config.metrics) != 4:
