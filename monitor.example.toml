@@ -4,8 +4,8 @@ title = "example.com"
 # 見出しの名前の左に出すロゴ（任意）。白一色・背景透明の PNG にする（地は黒、異常のときは赤になるため）。
 # 20 ピクセル角の枠に、縦横比を保って縮めて出す。~ と、この設定ファイルからの相対パスが使える
 # logo = "~/Library/Application Support/claude-usage-display/icons/example.png"
-# false にすると、見出しの名前を出さず、横置きの見出しの行を異常の表示（1 行は大きい文字、長ければ 2 行）に使う（既定 true）
-# show_title = false
+# true にすると、横置きで異常があるときだけ、見出しの名前を出さず、見出しの行を異常の表示（1 行は大きい文字、長ければ 2 行）に使う（既定 false）
+# large_alerts = true
 region = "ap-northeast-1"
 # Keychain の項目のサービス名。アカウント名 = アクセスキー ID、パスワード = シークレット。
 # 鍵は cloudwatch:GetMetricStatistics と、下の状態ファイルの s3:GetObject だけを持つ読み取り専用のもの

@@ -205,8 +205,13 @@ def render(status: ServerStatus | None, assessment: Assessment | None, config: M
     pill = layout.pill
     if same_row:
         pill = (max(pill[0], round(title_left + title_font.getlength(config.title) + TITLE_GAP)), *pill[1:])
-    # 見出しの名前を出さない設定（横置きだけ）: 名前の分だけ、帯と文言を左へ広げる
-    big = not config.show_title and not portrait
+    # 異常の文言を大きく出す設定（横置きだけ）: 異常のあるときだけ、見出しの名前を出さず、名前の分だけ帯と文言を
+    # 左へ広げる。異常が無いときは、名前を出し、点と短い文言のまま
+    big_text = None
+    if config.large_alerts and not portrait:
+        big_text = _alert_text(assessment) if red else (
+            fetch_error or (assessment.warnings[0] if assessment and assessment.warnings else None))
+    big = bool(big_text)
     if big:
         pill = (title_left, pill[1], round(width - layout.inset - stamp_font.getlength(stamp) - TITLE_GAP), pill[3])
     center = (pill[0] + pill[2]) / 2
@@ -217,10 +222,7 @@ def render(status: ServerStatus | None, assessment: Assessment | None, config: M
     warn = False
     big_lines = big_font = None
     if big:
-        big_text = _alert_text(assessment) if red else (
-            fetch_error or (assessment.warnings[0] if assessment and assessment.warnings else None))
-        if big_text:
-            big_lines, big_font = _big_lines(big_text, pill_width - 24, 6 if red else SMALL_WEIGHT)
+        big_lines, big_font = _big_lines(big_text, pill_width - 24, 6 if red else SMALL_WEIGHT)
     two_lines = red and layout.tall_pill is not None and len(assessment.alerts) > 1
     if big_lines:
         if red:
