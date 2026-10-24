@@ -64,14 +64,38 @@ class BuildTest(unittest.TestCase):
         self.assertEqual((ssd.value, ssd.detail), (None, ("未接続",)))
 
     def test_warnings_in_order(self):
-        reading = lm.build(sample(pressure=4, swap=round(4.2 * GIB), thermal=2, smart="Failing",
+        reading = lm.build(sample(pressure=4, swap=round(4.2 * GIB), thermal=2, smart="Failing", swap_rate=0.0,
                                   last_backup=datetime(2026, 10, 12, 23, 33, tzinfo=timezone.utc)), NOW)
         self.assertEqual(reading.warnings, ("メモリ危険　スワップ 4.2 GB", "熱で性能を制限しています",
                                             "内蔵 SSD の SMART: Failing", "バックアップ 10/13（2 日前）"))
         self.assertIsNone(reading.note)
-        self.assertEqual(lm.build(sample(pressure=2, swap=0), NOW).warnings, ("メモリ逼迫　スワップ 0.0 GB",))
+        self.assertEqual(lm.build(sample(pressure=2, swap=0, swap_rate=lm.SWAP_ACTIVE), NOW).warnings,
+                         ("メモリ逼迫　スワップ 0.0 GB",))
         self.assertEqual(lm.build(sample(thermal=1), NOW).warnings, ())  # Moderate はまだ出さない
         self.assertEqual(lm.build(sample(smart=None, thermal=None), NOW).warnings, ())  # 読めないときは出さない
+
+    def test_memory_alert_needs_danger_or_swap_activity(self):
+        """段階 2 は日常的に出るので、スワップの読み書きが続いているときだけ見出しに出す（段階 4 は常に出す）。"""
+        busy = lm.SWAP_ACTIVE
+        cases = (
+            (1, busy * 10, False), (1, None, False),
+            (2, 0.0, False), (2, busy - 1, False), (2, None, False),  # 初回など速さが読めないときも出さない
+            (2, busy, True), (2, busy * 10, True),
+            (4, 0.0, True), (4, None, True),
+        )
+        for pressure, rate, shown in cases:
+            with self.subTest(pressure=pressure, rate=rate):
+                warnings = lm.build(sample(pressure=pressure, swap_rate=rate), NOW).warnings
+                self.assertEqual(bool(warnings), shown)
+        # 注意が出なくても、リングは段階どおりに黄色にする
+        self.assertEqual(lm.build(sample(pressure=2, swap_rate=0.0), NOW).status.metrics[1].tint, "warning")
+
+    def test_swap_rate(self):
+        self.assertIsNone(lm.swap_rate(None, 10.0, 100, 16384))
+        self.assertIsNone(lm.swap_rate((10.0, 100), 10.0, 100, 16384))  # 間が空かない
+        self.assertIsNone(lm.swap_rate((10.0, 100), 20.0, 50, 16384))   # 再起動などでカウンターが戻った
+        self.assertEqual(lm.swap_rate((10.0, 100), 20.0, 100, 16384), 0.0)
+        self.assertEqual(lm.swap_rate((10.0, 100), 70.0, 164, 16384), 64 * 16384 / 60)
 
     def test_demo_samples(self):
         self.assertEqual(lm.build(lm.demo_sample("normal", NOW), NOW).warnings, ())
@@ -101,6 +125,9 @@ class CpuTest(unittest.TestCase):
         ticks = lm.cpu_ticks(reader_host)
         self.assertGreater(len(ticks), 0)
         self.assertTrue(all(len(t) == 4 for t in ticks))
+        first, second = lm.swap_pages(reader_host), lm.swap_pages(reader_host)
+        self.assertGreater(first, 0)
+        self.assertGreaterEqual(second, first)  # 起動後の累計なので減らない
 
 
 class ParseTest(unittest.TestCase):

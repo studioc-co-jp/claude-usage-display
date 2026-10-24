@@ -294,7 +294,7 @@ class LocalRunnerTest(unittest.TestCase):
         from claude_usage_display import local_monitor as lm
         from tests.test_local_monitor import NOW, sample
 
-        readings = [lm.build(sample(), NOW), lm.build(sample(pressure=2, swap=round(4.2 * 2 ** 30)), NOW),
+        readings = [lm.build(sample(), NOW), lm.build(sample(pressure=2, swap=round(4.2 * 2 ** 30), swap_rate=lm.SWAP_ACTIVE), NOW),
                     lm.build(sample(), NOW)]
         reader = mock.Mock()
         reader.fetch.side_effect = readings

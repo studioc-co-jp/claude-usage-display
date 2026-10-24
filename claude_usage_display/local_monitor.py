@@ -14,6 +14,11 @@
   CoreFoundation の ``CFURL.h``）。スナップショットなど自動で空く分まで「使用中」に数えない
 - 見出しの行: 普段は最後のバックアップの時刻（緑）。異常があればその内容（オレンジ）。異常は、メモリの逼迫
   （スワップの量を添える）・熱による性能の制限・内蔵 SSD の SMART・バックアップが古いこと
+- メモリの逼迫を見出しに出すのは、段階 4（危険）か、段階 2（警告）でスワップの読み書きが続いているときだけ
+  （``SWAP_ACTIVE``。2026-10-25 ユーザーが決めた）。32 GB の Mac で普段の作業をすると段階 2 は毎日出て
+  （10-21〜24 に 1 日 3〜15 回）、そのたびに重くなっていたわけではなく、見出しの注意に慣れてしまうため。
+  段階 2 だけのときはリングの黄色（macOS のアクティビティモニタの黄色と同じ判定）に任せる。
+  読み書きの速さは ``host_statistics64`` の ``swapins`` と ``swapouts`` の、直前の取得からの差から出す
 - 最後のバックアップの時刻は、Time Machine の設定ファイル（``SnapshotDates``）から読む。launchd から起動すると
   フルディスクアクセスが無いため読めないので、そのときはバックアップ先のディスクのスナップショットの名前
   （``diskutil apfs listSnapshots`` の ``com.apple.TimeMachine.2026-10-16-062646.backup``。この Mac の時刻）から読む。
@@ -48,6 +53,9 @@ BACKUP_STALE = timedelta(hours=36)  # 毎日のバックアップが 1 回抜け
 SMART_INTERVAL = 600  # 内蔵 SSD の SMART を読み直す間隔（秒）
 TM_PLIST = "/Library/Preferences/com.apple.TimeMachine.plist"
 GIB = 2 ** 30
+# 段階 2 の注意を出すスワップの読み書きの速さ（バイト/秒。直前の取得からの平均）。この Mac の起動後 7 日間の
+# 平均は約 44 KB/秒（2026-10-25 の vm_stat）で、その約 20 倍。段階 2 でも読み書きが 0 のときは重くならなかった
+SWAP_ACTIVE = 2 ** 20
 
 
 @dataclass(frozen=True)
@@ -68,6 +76,7 @@ class Sample:
     last_backup: datetime | None
     backup_running: bool = False
     backup_percent: float | None = None  # 0〜1
+    swap_rate: float | None = None  # スワップの読み書きの速さ（バイト/秒）。初回など読めないときは None
 
 
 @dataclass(frozen=True)
@@ -126,9 +135,10 @@ def build(sample: Sample, now: datetime) -> LocalReading:
                disk_metric(SPECS[3], sample.ssd, "未接続"))
     note, backup_warning = backup_line(sample.last_backup, sample.backup_running, sample.backup_percent, now)
     warnings = []
-    if sample.pressure >= 2:
-        word = "危険" if sample.pressure >= 4 else "逼迫"
-        warnings.append(f"メモリ{word}　スワップ {sample.swap / GIB:.1f} GB")
+    if sample.pressure >= 4:
+        warnings.append(f"メモリ危険　スワップ {sample.swap / GIB:.1f} GB")
+    elif sample.pressure >= 2 and sample.swap_rate is not None and sample.swap_rate >= SWAP_ACTIVE:
+        warnings.append(f"メモリ逼迫　スワップ {sample.swap / GIB:.1f} GB")
     if sample.thermal is not None and sample.thermal >= THERMAL_WARNING:
         warnings.append("熱で性能を制限しています")
     if sample.smart not in (None, "Verified"):
@@ -147,7 +157,7 @@ def demo_sample(case: str, now: datetime) -> Sample:
     return Sample(cpu=33, performance=22, efficiency=40, memory=78 if warning else 44, memory_total=32 * GIB,
                   pressure=2 if warning else 1, swap=round(4.2 * GIB) if warning else 0,
                   disk=(494_384_795_648, 167_220_789_603), ssd=(4_000_109_887_488, 2_392_104_269_419), thermal=0,
-                  smart="Verified", last_backup=backup)
+                  smart="Verified", last_backup=backup, swap_rate=5 * 2 ** 20 if warning else 0.0)
 
 
 # ---- 取得（ctypes とコマンド）
@@ -156,6 +166,7 @@ _libc = ctypes.CDLL("/usr/lib/libSystem.dylib")
 _libc.mach_host_self.restype = ctypes.c_uint
 _libc.host_processor_info.argtypes = [ctypes.c_uint, ctypes.c_int, ctypes.POINTER(ctypes.c_uint),
                                       ctypes.POINTER(ctypes.POINTER(ctypes.c_int)), ctypes.POINTER(ctypes.c_uint)]
+_libc.host_statistics64.argtypes = [ctypes.c_uint, ctypes.c_int, ctypes.c_void_p, ctypes.POINTER(ctypes.c_uint)]
 _libc.vm_deallocate.argtypes = [ctypes.c_uint, ctypes.c_size_t, ctypes.c_size_t]
 _libc.sysctlbyname.argtypes = [ctypes.c_char_p, ctypes.c_void_p, ctypes.POINTER(ctypes.c_size_t), ctypes.c_void_p,
                                ctypes.c_size_t]
@@ -229,6 +240,39 @@ def sysctl(name: str, ctype=ctypes.c_int):
 class _SwapUsage(ctypes.Structure):  # sys/sysctl.h の struct xsw_usage
     _fields_ = [("total", ctypes.c_uint64), ("avail", ctypes.c_uint64), ("used", ctypes.c_uint64),
                 ("pagesize", ctypes.c_uint32), ("encrypted", ctypes.c_bool)]
+
+
+class _VmStatistics64(ctypes.Structure):  # mach/vm_statistics.h の struct vm_statistics64
+    _fields_ = [("free_count", ctypes.c_uint32), ("active_count", ctypes.c_uint32),
+                ("inactive_count", ctypes.c_uint32), ("wire_count", ctypes.c_uint32),
+                ("zero_fill_count", ctypes.c_uint64), ("reactivations", ctypes.c_uint64),
+                ("pageins", ctypes.c_uint64), ("pageouts", ctypes.c_uint64), ("faults", ctypes.c_uint64),
+                ("cow_faults", ctypes.c_uint64), ("lookups", ctypes.c_uint64), ("hits", ctypes.c_uint64),
+                ("purges", ctypes.c_uint64), ("purgeable_count", ctypes.c_uint32),
+                ("speculative_count", ctypes.c_uint32), ("decompressions", ctypes.c_uint64),
+                ("compressions", ctypes.c_uint64), ("swapins", ctypes.c_uint64), ("swapouts", ctypes.c_uint64),
+                ("compressor_page_count", ctypes.c_uint32), ("throttled_count", ctypes.c_uint32),
+                ("external_page_count", ctypes.c_uint32), ("internal_page_count", ctypes.c_uint32),
+                ("total_uncompressed_pages_in_compressor", ctypes.c_uint64)]
+
+
+HOST_VM_INFO64 = 4  # mach/host_info.h
+
+
+def swap_pages(host) -> int:
+    """起動後のスワップの読み書きの合計（ページ数）。"""
+    stats = _VmStatistics64()
+    count = ctypes.c_uint(ctypes.sizeof(stats) // 4)
+    if _libc.host_statistics64(host, HOST_VM_INFO64, ctypes.byref(stats), ctypes.byref(count)) != 0:
+        raise OSError("host_statistics64 を読めません")
+    return stats.swapins + stats.swapouts
+
+
+def swap_rate(before: tuple[float, int] | None, now: float, pages: int, page_size: int) -> float | None:
+    """（時刻, ページ数）の前回との差から、スワップの読み書きの速さ（バイト/秒）。前回が無い・戻った・間が空かないときは None。"""
+    if before is None or now <= before[0] or pages < before[1]:
+        return None
+    return (pages - before[1]) * page_size / (now - before[0])
 
 
 def volume(path: str) -> tuple[int, int] | None:
@@ -330,6 +374,7 @@ class LocalReader:
         if self.kinds is None:
             log.warning("CPU の種類（高性能・高効率）を読めません。CPU は全体の使用率だけを出します")
         self.previous: list | None = None
+        self.previous_swap: tuple[float, int] | None = None
         self.memory_total = sysctl("hw.memsize", ctypes.c_uint64).value
         name = ctypes.c_char_p.in_dll(_libc, "kOSThermalNotificationPressureLevelName").value
         token = ctypes.c_int()
@@ -376,12 +421,16 @@ class LocalReader:
         size = ctypes.c_size_t(ctypes.sizeof(swap))
         if _libc.sysctlbyname(b"vm.swapusage", ctypes.byref(swap), ctypes.byref(size), None, 0) != 0:
             raise OSError("sysctl vm.swapusage を読めません")
+        now, pages = time.monotonic(), swap_pages(self.host)
+        rate = swap_rate(self.previous_swap, now, pages, swap.pagesize)
+        self.previous_swap = (now, pages)
         running, percent = backup_progress()
         return Sample(cpu=cpu, performance=performance, efficiency=efficiency,
                       memory=100 - sysctl("kern.memorystatus_level").value, memory_total=self.memory_total,
                       pressure=sysctl("kern.memorystatus_vm_pressure_level").value, swap=swap.used,
                       disk=volume("/"), ssd=volume(self.ssd_path), thermal=self._thermal(), smart=self._smart(),
-                      last_backup=last_backup(), backup_running=running, backup_percent=percent)
+                      last_backup=last_backup(), backup_running=running, backup_percent=percent,
+                      swap_rate=rate)
 
     def fetch(self, now: datetime | None = None) -> LocalReading:
         sample = self.sample()

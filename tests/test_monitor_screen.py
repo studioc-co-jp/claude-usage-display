@@ -131,9 +131,12 @@ class LocalScreenTest(unittest.TestCase):
     def test_note_is_shown_with_a_green_dot_and_warnings_replace_it(self):
         header = lambda image: [image.getpixel((px, round(ms.LANDSCAPE.dot_y))) for px in range(116, 364)]
         self.assertTrue(any(near(p, ms.GREEN) for p in header(self.render())))
-        warned = header(self.render(pressure=2))
+        warned = header(self.render(pressure=2, swap_rate=1 << 20))
         self.assertTrue(any(near(p, ORANGE) for p in warned))
         self.assertFalse(any(near(p, ms.GREEN) for p in warned))
+        # 段階 2 だけ（スワップの読み書きが無い）なら、見出しは緑のまま。リングの色は別に黄色になる
+        quiet = header(self.render(pressure=2, swap_rate=0.0))
+        self.assertTrue(any(near(p, ms.GREEN) for p in quiet))
 
 
 class HeaderTest(unittest.TestCase):
