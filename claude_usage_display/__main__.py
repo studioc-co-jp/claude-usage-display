@@ -416,7 +416,9 @@ class Runner(_Resident):
             elif e.message != self.status:
                 log.warning("取得に失敗しました: %s", e.message)
             self.status = e.message
-            self.next_fetch = now + wait
+            # Retry-After は応答の時点から数える。要求の前の now から数えると、応答にかかった分（429 で 1〜3 秒）だけ
+            # 早く取りに行き、また 429 になって 2 分止まる（2026-10-21・10-26 に 4 回）
+            self.next_fetch = time.monotonic() + wait
 
     def _fetch_gemini_if_due(self) -> None:
         if self.gemini_reader is None or time.monotonic() < self.next_gemini:

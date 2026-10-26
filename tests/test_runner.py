@@ -90,6 +90,17 @@ class RunnerTest(unittest.TestCase):
         self.assertEqual(runner.status, "取得の間隔を空けています")
         self.assertEqual(runner.next_fetch, 1900.0)
 
+    def test_retry_after_counts_from_the_response(self):
+        # 2026-10-26 16:03:01 の 429（Retry-After 218 秒）は、応答に約 1.3 秒かかり、要求の前から数えたため
+        # 1.3 秒早く取りに行って、また 429（Retry-After 2 秒）になった
+        runner = cli.Runner(make_args())
+        limited = UsageError("取得の間隔を空けています", 218, rate_limited=True, detail="HTTP 429。Retry-After: 218 → 218 秒")
+        with mock.patch.object(cli, "fetch_snapshot", side_effect=limited), \
+                mock.patch.object(cli.time, "monotonic", side_effect=[1000.0, 1001.3]), \
+                self.assertLogs(cli.log, "WARNING"):
+            runner._fetch_if_due()
+        self.assertEqual(runner.next_fetch, 1001.3 + 218)
+
     def test_rate_limit_is_logged_every_time_with_wait_and_recovery_duration(self):
         runner = cli.Runner(make_args())
         limited = UsageError("取得の間隔を空けています", 212, rate_limited=True, detail="HTTP 429。Retry-After: 212 → 212 秒")
@@ -99,7 +110,7 @@ class RunnerTest(unittest.TestCase):
         fake_datetime = mock.Mock(wraps=datetime, now=lambda tz=None: next(clock))
         with mock.patch.object(cli, "fetch_snapshot", side_effect=[limited, limited, snapshot()]), \
                 mock.patch.object(cli, "datetime", fake_datetime), \
-                mock.patch.object(cli.time, "monotonic", side_effect=[0.0, 1000.0, 2000.0]), \
+                mock.patch.object(cli.time, "monotonic", side_effect=[0.0, 0.5, 1000.0, 1000.5, 2000.0]), \
                 self.assertLogs(cli.log, "INFO") as logs:
             for _ in range(3):
                 runner._fetch_if_due()
@@ -113,7 +124,7 @@ class RunnerTest(unittest.TestCase):
     def test_other_failures_are_logged_once_while_they_continue(self):
         runner = cli.Runner(make_args())
         with mock.patch.object(cli, "fetch_snapshot", side_effect=UsageError("通信できません")), \
-                mock.patch.object(cli.time, "monotonic", side_effect=[0.0, 1000.0]), \
+                mock.patch.object(cli.time, "monotonic", side_effect=[0.0, 0.5, 1000.0, 1000.5]), \
                 self.assertLogs(cli.log, "WARNING") as logs:
             runner._fetch_if_due()
             runner._fetch_if_due()
