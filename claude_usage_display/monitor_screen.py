@@ -60,7 +60,6 @@ class _Layout:
     number: tuple[float, float, int, int, bool]  # 数字の位置・大きさ・% の大きさ（0 なら出さない）・中央にそろえるか
     threshold: tuple[float, float, str, int]     # しきい値の位置・anchor・大きさ
     dividers: tuple[tuple[float, float, float, float], ...]
-    bright_detail: bool = False                  # しきい値（下の行）を、薄い灰色ではなく名前と同じ色にする
 
 
 LANDSCAPE = _Layout(
@@ -72,14 +71,14 @@ LANDSCAPE = _Layout(
     status_size=18, alert_size=18, dot_radius=6, stamp_size=16, tall_pill=None, tall_baselines=None,
     # 数字をリングの中に入れ、名前としきい値をリングの右で縦の中ほどに置く（2026-10-15、ユーザーが見本で選んだ）。
     # 名前は、実機を見たユーザーの指示で 18→22 にした（2026-10-27、見本で選んだ）。
-    # 続けて、ユーザーの指示「視認性を上げる」で、しきい値（下の行）を灰色から名前と同じ白にして 14→15 にし、
-    # リングの中の % を外して数字を 30→38 にした（同日、見本で選んだ案 B）。15 ピクセルの下の行を区切り線の手前に
-    # 収めるため、名前と下の行を 126→119 へ寄せた（リングの外側 110 との間は 9）。左の列の「しきい値 80%」
-    # （15 ピクセルで幅 99）の右端は 238 で、区切り線（240）の 2 ピクセル手前。しきい値は 2 桁の整数まで収まる。
-    # 「ディスク」（22 ピクセルで幅 87）の右端は 226。数字の「100」（幅 71）はリングの内側（直径 82）に収まる
+    # 続けて、ユーザーの指示「視認性を上げる」で、しきい値（下の行）を 14→15 にし、リングの中の % を外して
+    # 数字を 30→38 にした（同日、見本で選んだ案 B）。しきい値を名前と同じ白にもしたが、実機を見たユーザーが
+    # 「がちゃがちゃする」として灰色に戻した。15 ピクセルの下の行を区切り線の手前に収めるため、名前と下の行を
+    # 126→119 へ寄せた（リングの外側 110 との間は 9）。左の列の「しきい値 80%」（15 ピクセルで幅 99）の右端は 238 で、
+    # 区切り線（240）の 2 ピクセル手前。しきい値は 2 桁の整数まで収まる。「ディスク」（22 ピクセルで幅 87）の
+    # 右端は 226。数字の「100」（幅 71）はリングの内側（直径 82）に収まる
     cells=((20, 44), (250, 44), (20, 182), (250, 182)), ring=(58, 69, 52, 11), label=(119, 65, "ls", 22),
-    number=(58, 83, 38, 0, True), threshold=(119, 90, "ls", 15), dividers=((240, 56, 240, 304), (20, 182, 460, 182)),
-    bright_detail=True)
+    number=(58, 83, 38, 0, True), threshold=(119, 90, "ls", 15), dividers=((240, 56, 240, 304), (20, 182, 460, 182)))
 PORTRAIT = _Layout(
     size=(320, 480), inset=16, title_baseline=26, pill=(16, 38, 304, 70), status_baseline=60, dot_y=53.5,
     # 監視の状態は、実機を見たユーザーの指示で大きくした（2026-10-11。文言 13→18、帯の中 15→18）。
@@ -305,6 +304,5 @@ def render(status: ServerStatus | None, assessment: Assessment | None, config: M
         line_step = max(DETAIL_LINE, threshold_size + 4)  # 14 ピクセルまでは 18、大きくしたら字に合わせて広げる
         for line_index, line in enumerate(lines):
             draw.text((x + threshold_x, y + threshold_y + line_step * line_index), line,
-                      font=font(threshold_size, SMALL_WEIGHT), fill=strong if layout.bright_detail else faint,
-                      anchor=threshold_anchor)
+                      font=font(threshold_size, SMALL_WEIGHT), fill=faint, anchor=threshold_anchor)
     return image

@@ -7,7 +7,7 @@ from PIL import Image
 
 from claude_usage_display import monitor_screen as ms
 from claude_usage_display import server_monitor as sm
-from claude_usage_display.gauge import BACKGROUND, ICON_GAP, ICON_SIZE, ORANGE, RED
+from claude_usage_display.gauge import BACKGROUND, ICON_GAP, ICON_SIZE, ORANGE, RED, SECONDARY
 from claude_usage_display.render import SMALL_WEIGHT, font
 from tests.test_server_monitor import NOW, config, status
 
@@ -57,14 +57,16 @@ class MonitorScreenTest(unittest.TestCase):
         end = ms.LANDSCAPE.cells[0][0] + threshold_x + font(threshold_size, SMALL_WEIGHT).getlength("しきい値 85%")
         self.assertLess(end, ms.LANDSCAPE.dividers[0][0])
 
-    def test_landscape_detail_is_white_and_the_number_has_no_percent_sign(self):
-        # 2026-10-27、視認性を上げるため、しきい値を灰色から白にして 14→15 ピクセルにし、% を外して数字を 30→38 にした
+    def test_landscape_detail_stays_gray_and_the_number_has_no_percent_sign(self):
+        # 2026-10-27、視認性を上げるため、しきい値を 14→15 ピクセルにし、% を外して数字を 30→38 にした。
+        # しきい値を白にもしたが、実機を見たユーザーが「がちゃがちゃする」として灰色に戻した
         image = self.render(status())
         x, y = ms.LANDSCAPE.cells[0]
         threshold_x, threshold_y, _, size = ms.LANDSCAPE.threshold
         band = [image.getpixel((x + px, y + py)) for px in range(threshold_x, threshold_x + 60)
                 for py in range(threshold_y - size, threshold_y + 2)]
-        self.assertTrue(any(min(p) > 240 for p in band))  # 灰色のときは明るくても 147
+        self.assertTrue(any(near(p, SECONDARY, 8) for p in band))
+        self.assertFalse(any(min(p) > 200 for p in band))  # 白い字が無い（灰色は明るくても 147）
         _, _, number_size, unit_size, _ = ms.LANDSCAPE.number
         self.assertEqual(unit_size, 0)
         _, _, radius, width = ms.LANDSCAPE.ring
