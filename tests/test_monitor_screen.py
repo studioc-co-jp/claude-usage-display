@@ -57,6 +57,15 @@ class MonitorScreenTest(unittest.TestCase):
         end = ms.LANDSCAPE.cells[0][0] + threshold_x + font(threshold_size, SMALL_WEIGHT).getlength("しきい値 85%")
         self.assertLess(end, ms.LANDSCAPE.dividers[0][0])
 
+    def test_landscape_long_labels_fit_their_cells(self):
+        # 2026-10-27 に名前を 18→22 ピクセルにした。左の列の名前は区切り線の手前、右の列の名前は
+        # その下の「しきい値 90%」より右へ出ない
+        label_x, _, _, label_size = ms.LANDSCAPE.label
+        threshold_x, _, _, threshold_size = ms.LANDSCAPE.threshold
+        width = max(font(label_size, 6).getlength(text) for text in ("ディスク", "スワップ"))
+        self.assertLess(ms.LANDSCAPE.cells[2][0] + label_x + width, ms.LANDSCAPE.dividers[0][0] - 4)
+        self.assertLessEqual(label_x + width, threshold_x + font(threshold_size, SMALL_WEIGHT).getlength("しきい値 90%"))
+
     def test_job_incidents_show_an_orange_dot_on_black(self):
         incidents = (sm.Incident("job", "nightly-backup", "直近の実行が失敗", None),)
         image = self.render(status(incidents=incidents))

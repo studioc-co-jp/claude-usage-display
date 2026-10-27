@@ -1,3 +1,5 @@
+import re
+import subprocess
 import unittest
 from datetime import datetime, timedelta, timezone
 
@@ -125,9 +127,14 @@ class CpuTest(unittest.TestCase):
         ticks = lm.cpu_ticks(reader_host)
         self.assertGreater(len(ticks), 0)
         self.assertTrue(all(len(t) == 4 for t in ticks))
-        first, second = lm.swap_pages(reader_host), lm.swap_pages(reader_host)
-        self.assertGreater(first, 0)
-        self.assertGreaterEqual(second, first)  # 起動後の累計なので減らない
+        # 起動後の累計なので、vm_stat の Swapins と Swapouts の合計をはさむ。再起動の直後は 0 のこともある
+        # （2026-10-27、macOS 27.2 への更新の後。0 より大きいと決めつけていたため落ちた）
+        first = lm.swap_pages(reader_host)
+        vm_stat = subprocess.run(["vm_stat"], capture_output=True, text=True, check=True).stdout
+        counted = sum(int(m) for m in re.findall(r"^Swap(?:ins|outs):\s+(\d+)\.", vm_stat, re.MULTILINE))
+        second = lm.swap_pages(reader_host)
+        self.assertLessEqual(first, counted)
+        self.assertLessEqual(counted, second)
 
 
 class ParseTest(unittest.TestCase):
