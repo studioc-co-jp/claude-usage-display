@@ -99,6 +99,10 @@ class Layout:
     cards: bool = True  # False はカードの面を描かず、黒地に縦の区切り線を引く
     ring: float = 1.0  # リングの半径と太さの倍率（content に掛ける）。大きくした分は下へ伸ばす
     remain_gap: float = REMAIN_GAP  # リセットの日時と残り時間の間（3.5 インチの寸法。content を掛ける）
+    number: float = TITLE1  # リングの中の数字の大きさ（3.5 インチの pt。content を掛ける）
+    percent_sign: bool = True  # 数字の右に小さく % を出すか
+    remain_pt: float = CAPTION1  # quiet_remain のときの残り時間の大きさ（3.5 インチの pt。content を掛ける）
+    remain_color: tuple[int, int, int] = SECONDARY  # quiet_remain のときの残り時間の色
 
     @property
     def k(self) -> float:
@@ -145,8 +149,14 @@ class Layout:
 # - ring・remain_gap: カードが無くなって下の隙間が目立ったので、リングを 1.15 倍にして「リセット」以降を下げ、
 #   「あと…」を日時に寄せた（日時との隙間 24 px は「リセット」と日時の隙間と同じ。下の余白は左右と同じ 27 px）。
 #   名前の位置は変えていない（2026-10-15、ユーザーが実機で候補から選んだ）
+# - remain_pt・remain_color: 「あと…」を白にし、32→38 ピクセルにした（2026-10-27、ユーザーの指示「視認性を上げる」。
+#   見本で選んだ）。字の下端が下がった分、下の余白が左右（27 ピクセル）を下回らないよう、remain_gap を 22→21.75 にした。
+#   日時との間は 24→18 ピクセル。「リセット」の見出しは灰色のまま
+# - number・percent_sign: リングの中の % を外し、数字を 76→108 ピクセルにした（同日、見本で選んだ）。
+#   「100」の幅 203 は、リングの内側の直径 242 に収まる
 LARGE = {(1280, 720): {"content": 1.2, "stamp": 16, "quiet_remain": True, "blue": (0, 105, 255), "cards": False,
-                       "ring": 1.15, "remain_gap": 22}}
+                       "ring": 1.15, "remain_gap": 21.75, "remain_pt": 14, "remain_color": LABEL, "number": 40,
+                       "percent_sign": False}}
 
 
 def layout_for(size: tuple[int, int]) -> Layout:
@@ -155,9 +165,9 @@ def layout_for(size: tuple[int, int]) -> Layout:
 
 def _remain_style(layout: Layout, scaled: bool = True) -> tuple[int, int, tuple[int, int, int]]:
     """残り時間（「あと…」）の字の大きさ（ピクセル）・太さ・色。``scaled`` はカードの中身の倍率を掛けるか。"""
-    size = (layout.cpt if scaled else layout.pt)(CAPTION1 if layout.quiet_remain else FOOTNOTE)
+    size = (layout.cpt if scaled else layout.pt)(layout.remain_pt if layout.quiet_remain else FOOTNOTE)
     if layout.quiet_remain:  # 「リセット」の見出しと同じ（13 ピクセル以下になるときだけ W4）
-        return size, 3 if size > 13 else SMALL_WEIGHT, SECONDARY
+        return size, 3 if size > 13 else SMALL_WEIGHT, layout.remain_color
     return size, SMALL_WEIGHT, LABEL
 
 
@@ -223,7 +233,8 @@ def content_top(layout: Layout = Layout()) -> float:
     """カードの中身の上端。リングが等倍のときの中身をカードの高さの中央に置く位置で、
     リングの大きさや残り時間の間を変えても名前の位置は変えず、下の行だけを動かす。"""
     _left, top, _right, bottom = card_box(0, layout)
-    return top + (bottom - top - content_rows(replace(layout, ring=1.0, remain_gap=REMAIN_GAP))[-1]) / 2
+    return top + (bottom - top - content_rows(replace(layout, ring=1.0, remain_gap=REMAIN_GAP,
+                                                      remain_pt=CAPTION1))[-1]) / 2
 
 
 def card_box(index: int, layout: Layout = Layout()) -> tuple[float, float, float, float]:
@@ -287,15 +298,17 @@ class _Shapes:
 
 
 def _value(draw: ImageDraw.ImageDraw, cx: float, baseline: float, percent: float | None, layout: Layout,
-           number_size: int = TITLE1, unit_size: int = SUBHEAD) -> None:
-    """「26」を大きく、「%」を小さく灰色で、ベースラインをそろえて中央に書く。"""
+           number_size: int = TITLE1, unit_size: int | None = SUBHEAD) -> None:
+    """「26」を大きく、「%」を小さく灰色で、ベースラインをそろえて中央に書く。``unit_size`` が None なら % を出さない。"""
     number = "--" if percent is None else f"{round(percent)}"
-    number_font, unit_font = rounded(layout.pt(number_size)), rounded(layout.pt(unit_size))
+    number_font = rounded(layout.pt(number_size))
     number_width = draw.textlength(number, font=number_font)
-    unit_width = 0 if percent is None else draw.textlength("%", font=unit_font) + layout.px(1)
+    sign = percent is not None and unit_size is not None
+    unit_font = rounded(layout.pt(unit_size)) if sign else None
+    unit_width = draw.textlength("%", font=unit_font) + layout.px(1) if sign else 0
     left = cx - (number_width + unit_width) / 2
     draw.text((left, baseline), number, font=number_font, fill=LABEL, anchor="ls")
-    if percent is not None:
+    if sign:
         draw.text((left + number_width + layout.px(1), baseline), "%", font=unit_font, fill=SECONDARY, anchor="ls")
 
 
@@ -402,8 +415,9 @@ def render(snapshot: Snapshot | None, now: datetime, status: str | None = None,
         draw.text((cx, origin + label_y), meter.label, font=fit_font(meter.label, inner, cpt(SUBHEAD), 6),
                   fill=LABEL, anchor="ms")
         percent = None if meter.percent is None else max(0.0, meter.percent)
-        _value(draw, cx, origin + ring_y + cpx(10), percent, layout, TITLE1 * layout.content,
-               SUBHEAD * layout.content)
+        # 数字の基準線は、数字の大きさに比例して下げ、リングの中央に字の中ほどをそろえる
+        _value(draw, cx, origin + ring_y + cpx(10) * layout.number / TITLE1, percent, layout,
+               layout.number * layout.content, SUBHEAD * layout.content if layout.percent_sign else None)
         when, remain = reset_lines(meter.resets_at, now)
         draw.text((cx, origin + caption_y), "リセット", font=font(cpt(CAPTION1), 3), fill=SECONDARY, anchor="ms")
         draw.text((cx, origin + when_y), when, font=fit_font(when, inner, cpt(SUBHEAD), 6), fill=LABEL, anchor="ms")

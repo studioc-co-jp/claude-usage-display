@@ -57,6 +57,19 @@ class MonitorScreenTest(unittest.TestCase):
         end = ms.LANDSCAPE.cells[0][0] + threshold_x + font(threshold_size, SMALL_WEIGHT).getlength("しきい値 85%")
         self.assertLess(end, ms.LANDSCAPE.dividers[0][0])
 
+    def test_landscape_detail_is_white_and_the_number_has_no_percent_sign(self):
+        # 2026-10-27、視認性を上げるため、しきい値を灰色から白にして 14→15 ピクセルにし、% を外して数字を 30→38 にした
+        image = self.render(status())
+        x, y = ms.LANDSCAPE.cells[0]
+        threshold_x, threshold_y, _, size = ms.LANDSCAPE.threshold
+        band = [image.getpixel((x + px, y + py)) for px in range(threshold_x, threshold_x + 60)
+                for py in range(threshold_y - size, threshold_y + 2)]
+        self.assertTrue(any(min(p) > 240 for p in band))  # 灰色のときは明るくても 147
+        _, _, number_size, unit_size, _ = ms.LANDSCAPE.number
+        self.assertEqual(unit_size, 0)
+        _, _, radius, width = ms.LANDSCAPE.ring
+        self.assertLess(ms.rounded(number_size).getlength("100"), 2 * (radius - width) - 6)  # 「100」もリングの内側に収まる
+
     def test_landscape_long_labels_fit_their_cells(self):
         # 2026-10-27 に名前を 18→22 ピクセルにした。左の列の名前は区切り線の手前、右の列の名前は
         # その下の「しきい値 90%」より右へ出ない

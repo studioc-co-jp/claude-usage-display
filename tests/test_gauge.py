@@ -144,8 +144,9 @@ class LargeGaugeTest(unittest.TestCase):
         self.assertTrue(all(abs(a - b) <= 2 for a, b in zip(track, expected)), track)
 
     def test_larger_ring_moves_only_the_rows_below_it(self):
-        # カードが無くなって下の隙間が目立ったので、リングを 1.15 倍にし、「あと…」を日時に寄せた（2026-10-15）。名前は動かさない
-        self.assertEqual((self.LAYOUT.ring, self.LAYOUT.remain_gap), (1.15, 22))
+        # カードが無くなって下の隙間が目立ったので、リングを 1.15 倍にし、「あと…」を日時に寄せた（2026-10-15）。名前は動かさない。
+        # 「あと…」を 38 ピクセルにしたとき（2026-10-27）、下の余白を保つため間を 22→21.75 にした
+        self.assertEqual((self.LAYOUT.ring, self.LAYOUT.remain_gap), (1.15, 21.75))
         self.assertEqual((gauge.layout_for((480, 320)).ring, gauge.layout_for((480, 320)).remain_gap), (1.0, gauge.REMAIN_GAP))
         plain = replace(self.LAYOUT, ring=1.0, remain_gap=gauge.REMAIN_GAP)
         rows, plain_rows = gauge.content_rows(self.LAYOUT), gauge.content_rows(plain)
@@ -180,18 +181,27 @@ class LargeGaugeTest(unittest.TestCase):
         self.assertGreaterEqual(bottom_margin, self.LAYOUT.px(gauge.MARGIN))  # 下の端との間
         self.assertLess(2 * self.LAYOUT.ring_px()[0], self.LAYOUT.card_width - 2 * self.LAYOUT.px(gauge.CARD_PADDING))
 
-    def test_remaining_time_is_written_like_the_reset_caption(self):
-        # 5.2 インチは「あと…」を「リセット」の見出しと同じ灰色・大きさ・太さにする（2026-10-13）。3.5 インチは白の W4 のまま
-        self.assertEqual(gauge._remain_style(self.LAYOUT), (self.LAYOUT.cpt(gauge.CAPTION1), 3, gauge.SECONDARY))
+    def test_remaining_time_is_white_and_larger(self):
+        # 5.2 インチの「あと…」は、「リセット」の見出しと同じ灰色・大きさ・太さにしていた（2026-10-13）が、視認性を
+        # 上げるため白にし、32→38 ピクセルにした（2026-10-27）。太さは W3 のまま。3.5 インチは白の W4 のまま
+        self.assertEqual(gauge._remain_style(self.LAYOUT), (38, 3, gauge.LABEL))
         self.assertEqual(gauge._remain_style(gauge.layout_for((480, 320))), (13, gauge.SMALL_WEIGHT, gauge.LABEL))
         image = gauge.render(snapshot(26, 74, 93), NOW, size=self.SIZE)
         _label, _ring, _caption, _when, remain_y, content_height = gauge.content_rows(self.LAYOUT)
         left, top, right, bottom = gauge.card_box(0, self.LAYOUT)
         baseline = round(gauge.content_top(self.LAYOUT) + remain_y)
         band = [image.getpixel((x, y)) for x in range(round(left) + 20, round(right) - 20)
-                for y in range(baseline - 25, baseline + 4)]
-        self.assertTrue(any(near(p, gauge.SECONDARY, 20) for p in band), "灰色の字が無い")
-        self.assertFalse(any(min(p) > 200 for p in band), "白い字が残っている")
+                for y in range(baseline - 30, baseline + 4)]
+        self.assertTrue(any(min(p) > 240 for p in band), "白い字が無い")  # 灰色のときは明るくても 147
+
+    def test_number_is_larger_without_percent_sign(self):
+        # 5.2 インチは、リングの中の % を外し、数字を 76→108 ピクセルにした（2026-10-27）。3.5 インチは % を残す
+        self.assertFalse(self.LAYOUT.percent_sign)
+        self.assertTrue(gauge.layout_for((480, 320)).percent_sign)
+        size = self.LAYOUT.pt(self.LAYOUT.number * self.LAYOUT.content)
+        self.assertEqual(size, 108)
+        radius, width = self.LAYOUT.ring_px()
+        self.assertLess(gauge.rounded(size).getlength("100"), 2 * (radius - width) - 20)  # 「100」もリングの内側に収まる
 
     def test_card_content_is_vertically_centered(self):
         image = gauge.render(snapshot(26, 74, 93), NOW, size=self.SIZE)
