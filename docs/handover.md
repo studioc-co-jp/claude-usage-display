@@ -489,6 +489,7 @@ scripts/uninstall-launch-agent.sh                                 # 自動起動
 - **入れたこと**: `monitor_screen.LANDSCAPE_LARGE`（§4-23 の案 1 と同じ値）と `monitor_screen.layout_for`。`monitor` の常駐は、開いたディスプレイが 1280×720 ならこの配置で描く。`monitor --preview --device 5.2` もこの大きさで描く。`monitor --device 5.2 --portrait` は引数の解析で止める（縦置きの配置は 3.5 インチだけ）。テストは `test_large_layout_is_the_landscape_scaled_to_the_52_inch_display`・`test_draws_the_large_layout_on_the_52_inch_display`・`test_portrait_is_only_for_the_35_inch_display`。README に見本（`docs/images/monitor-1280x720.png`、架空の設定）を足した
 - **登録**: 5.2 インチは `scripts/install-launch-agent.sh --monitor --device 5.2 --brightness 40`（明るさは、それまでの 5.2 インチと同じ）。3.5 インチの 1 台目は `scripts/install-launch-agent.sh --device 3.5 --location 0x00120000 --brightness 25 --icons "$HOME/Library/Application Support/claude-usage-display/icons" --theme pace`（明るさは、それまでのこの 3.5 インチと同じ）。2 台目（この Mac の状態）は変えていない
 - **リングを大きくした**（同日、ユーザーの指示「5 インチのサークルもう少し大きくできる？」）。リングの大きさの上限は縦で決まる（上の段は異常の 2 行の帯の下端 54 の下、下の段は画面の下端 320 の手前）。半径 56（外径 252 px）と 60（270 px）の見本を描き、ユーザーが 60（推奨）を選んだ。数字は 38→44（86→99 px）、リングの太さ 11→12。上下の段を 44・182 → 48・183、横の区切り線を 182 → 184.5 に動かし、リングと文字のまとまりを左右の区画の中央に置き直した。上の段のリングの上端は 57（2 行の帯との間は 5.2 インチで約 7 px）、下の段の下端は 312（下の余白 18 px）。入れた配置が見本と 1 ピクセルも違わないことを確かめた
+- **3.5 インチ 2 台の明るさを 25% → 35% にした**（同日 00:39、ユーザーの指示「2 台とも 40% にしてみて」→ 実機を見て「2 台とも 5% 下げて」）。パネルに送る値は 191 → 165（`turing.brightness_level`、255 − 35 × 255 ÷ 100 = 165.75 の切り捨て）。5.2 インチは 40% のまま
 
 ## 5. 残っている作業（上から順に）
 
@@ -594,7 +595,10 @@ scripts/uninstall-launch-agent.sh                                 # 自動起動
       - テスト 168 件すべて通過。確認済みの判定を無効にすると、追加した 2 件が落ちることを確かめた。この Mac の `monitor.toml` に今回のジョブを書き、常駐を再起動して、実機の画面が「監視 正常」に戻ったことと、ログを確かめた（22:15）
     - 2026-10-10 1:47:45 に 3.5 インチが USB から外れた（ログ「ディスプレイが外れました」）。12:39 の時点でも USB の一覧に無い。原因はこのセッションでは分かっていない（ユーザーに報告した）。2026-10-11 0:40 にユーザーがつなぎ直し、同じハブの端子（Location ID `0x00111000`）で認識され、利用枠の常駐が 0:40:09 に接続した。0:41 の描き直しもエラーなく送られた
 11. **この Mac の状態の画面（`local`）を 2 台目の 3.5 インチで動かす**（2026-10-15 に実装した。§4-15）
-    **2026-10-21 に 1〜4 を終えた。**いまの登録は、サーバーの状態が `scripts/install-launch-agent.sh --monitor --device 3.5 --brightness 25 --location 0x00120000`、この Mac の状態が `scripts/install-launch-agent.sh --local --brightness 25 --flip --location 0x01120000 --logo "$HOME/Library/Application Support/claude-usage-display/icons/apple.png"`。挿す端子を変えると位置が変わり、その画面は出なくなるので、`probe` で位置を見て登録し直す
+    **2026-10-21 に 1〜4 を終えた。**2026-11-03 に入れ替え（§4-25）と明るさの変更をした後の登録は、次の 3 つ。挿す端子を変えると位置が変わり、その画面は出なくなるので、`probe` で位置を見て登録し直す
+    - 5.2 インチ（サーバーの状態）: `scripts/install-launch-agent.sh --monitor --device 5.2 --brightness 40`
+    - 3.5 インチ 1 台目 `0x00120000`（利用枠）: `scripts/install-launch-agent.sh --device 3.5 --location 0x00120000 --brightness 35 --icons "$HOME/Library/Application Support/claude-usage-display/icons" --theme pace`
+    - 3.5 インチ 2 台目 `0x01120000`（この Mac の状態）: `scripts/install-launch-agent.sh --local --brightness 35 --flip --location 0x01120000 --logo "$HOME/Library/Application Support/claude-usage-display/icons/apple.png"`
     - 2 台目は、つないだ直後は USB の機器として現れなかった（04:08 の `probe` と `system_profiler SPUSBHostDataType` に 3.5 インチは 1 台だけ。カーネルの記録にも出入りが無い）。`ioreg -p IOUSB` を 0.5 秒ごとに記録しながらユーザーにケーブルを逆に挿してもらうと、04:09:31 に認識されていたほうの 1 台（`0x00120000`）が消えた（逆にしたのはこちらだった）。元に戻して 04:11:03 に `0x00120000` が戻り、もう 1 台を挿し直すと 04:11:13 に `0x01120000` に現れた。1 台目と同じく、挿す向きで認識が変わる（§4-7。L 字アダプターを挟んでいるかは聞いていない）
     - シリアル番号は 2 台とも `USB35INCHIPSV2`（`probe`）。`0x00120000` は Genesys Logic のハブ（`05e3:0610`、`0x00100000`）の 2 番の端子、`0x01120000` は別のバスのハブ（`0bda:5411`、`0x01100000`）の下
     - サーバーの常駐は、04:11:19 に `0x00120000` をつかんでいた（`probe` でこちらだけ確保できない）ので、そのまま位置を固定した。2 台目は、ユーザーの置き方では天地が逆で、`--flip` で正しい向きになった。見出しの「バックアップ 4:04」、CPU の 2 行目（性能・効率）、4 つのリングの色、左上の Apple のロゴを、ユーザーが実機で確かめた（04:13）。明るさは、サーバーの画面と同じ 25%（パネルの値 191）で始めた
