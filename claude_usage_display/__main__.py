@@ -644,9 +644,13 @@ class LocalRunner(MonitorRunner):
 
 
 def _local_config(args) -> MonitorConfig:
-    """この Mac の状態の画面の設定。見出しの名前と、名前の左のロゴ（--logo。無ければ出さない）だけを持つ。"""
+    """この Mac の状態の画面の設定。見出しの名前と、名前の左のロゴ（--logo。無ければ出さない）だけを持つ。
+
+    注意（メモリ逼迫など）は、サーバーの状態の画面の large_alerts と同じく、見出しのロゴ・名前・時刻を出さず、
+    見出しの行をまるごと使って大きく出す（2026-11-02 ユーザーの指示）。
+    """
     return MonitorConfig(title=args.title, region="-", keychain_service="-", metrics=local_monitor.SPECS,
-                         logo=getattr(args, "logo", None))
+                         logo=getattr(args, "logo", None), large_alerts=True)
 
 
 def cmd_local(args) -> int:

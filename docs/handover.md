@@ -458,7 +458,13 @@ scripts/uninstall-launch-agent.sh                                 # 自動起動
   - `monitor_screen._Layout.k`: 配置を 3.5 インチの寸法で書き、描くときに座標と字の大きさを k 倍する（`_Shapes` は k が 1 でないとき拡大して描く倍率を下げる）。`render` に `layout` を渡せる。k が 1 のまま、サーバーの状態・この Mac の状態の 66 通り（設定 2 種・ロゴの有無・大きな文言の有無・正常/異常/ジョブ/取得の失敗・横置き/縦置き）が書き換えの前と 1 ピクセルも違わない
   - `gauge.Layout.columns`（既定 3）と `gauge.render` の `layout`。利用枠の画面 26 通り（3.5・5.2 インチ、アイコンの有無、取得の失敗、Gemini の枠、横棒の画面）が HEAD のコードと 1 ピクセルも違わない
   - **エラーの見出し**（`large_alerts`）: 名前だけを消していた（§4-18）のを、ロゴ・名前・右上の時刻を出さず、帯を左右の余白の内側いっぱいに広げる形にした。テスト `test_alert_hides_the_logo_and_the_time_and_uses_the_whole_row` を足し、行が広がって 1 行に収まるようになった文言に合わせて 2 件を直した（193 件すべて通過）。取得に失敗したときの「…時点」も出なくなることは、ユーザーに伝えた
-- **まだ入れていないこと**（ユーザーが見本を見て決めるのを待っている）: 5.2 インチの配置（見本では、左右の列の区画を 20 右へ寄せ、帯を中央の幅 248 にした）を `monitor_screen` に置き、`monitor` の常駐が 1280×720 のディスプレイではその配置で描くようにする。`run` に週次だけを出す設定を足す。この Mac の状態の画面で `large_alerts` を使う。2 台の常駐を登録し直す（5.2 インチ: `--monitor --device 5.2`、3.5 インチ `0x00120000`: 週次）
+- **ユーザーが見本を了承し、「まだ ultra の 5 時間制限が解除されていないので、現状の 3.5 インチモニターのエラー時にヘッダーいっぱいで表示する修正だけ入れて」と指示した**（同日）
+  - 入れたこと: この Mac の状態の画面で `large_alerts` を常に使う（`__main__._local_config`。テスト `test_local_warnings_use_the_whole_header_row`）。サーバーの状態の画面は `monitor.toml` で `large_alerts = true` にしてあるので、上の変更が常駐を起動し直すと効く。2 台の常駐を起動し直した。README の `local-warning.png` を同じ時刻（10-15 18:06）で描き直した（変わったのは見出しだけ）
+  - **5.2 インチと 3.5 インチの画面の入れ替えは、ユーザーが 5 時間の制限が外れるまで見送った**（§5 の 12）
+- **入れ替えの作業**（§5 の 12）
+  - 5.2 インチの配置（見本では、左右の列の区画を 20 右へ寄せ、帯を中央の幅 248 にした）を `monitor_screen` に置き、`monitor` の常駐が 1280×720 のディスプレイではその配置で描くようにする
+  - `run` に週次だけを出す設定を足す（見本は `gauge.Layout(480, 320, columns=2, cards=False, number=36, percent_sign=False, content=1.2)` に、週次と Fable 週次の 2 つを渡した）
+  - 2 台の常駐を登録し直す（5.2 インチ: `--monitor --device 5.2`、3.5 インチ `0x00120000`: 週次）
 
 ## 5. 残っている作業（上から順に）
 
@@ -572,6 +578,10 @@ scripts/uninstall-launch-agent.sh                                 # 自動起動
     2. サーバーの状態の常駐を、その 3.5 インチの位置を付けて登録し直す: `scripts/install-launch-agent.sh --monitor --device 3.5 --brightness 25 --location 0x…`（付けないと、2 つの常駐が同じ 3.5 インチを取り合う）
     3. この Mac の状態の常駐を登録する: `scripts/install-launch-agent.sh --local --location 0x… --logo "$HOME/Library/Application Support/claude-usage-display/icons/apple.png"`（明るさはサーバーの画面と見比べて決める。ロゴは §4-15 の「見出しの Apple のロゴ」）。天地が逆なら `--flip`
     4. 実機の画面をユーザーに見てもらう（見出しの「バックアップ …」、CPU の 2 行目、ログ `~/Library/Logs/claude-usage-display-local.log`）
+
+12. **5.2 インチにサーバーの状態、3.5 インチ（`0x00120000`）に Claude の週次を出す**（ユーザーが後回しを決めた。2026-11-02）
+    - 見本はユーザーが了承した（§4-23）。作業の中身は §4-23 の「入れ替えの作業」
+    - **再開のきっかけ**: Ultra のアカウントの検証が済み、5 時間の制限が外れたとき。claude.ai の Settings > Usage に Current session の欄が出なくなる（公式の記事「What is the Ultra plan?」）。利用枠の API で `kind: "session"` がどう変わるか（消えるか、`is_active` などが変わるか）も、そのときに確かめる。いまのコードは、`limits` に `session` が無いと古い形式の `five_hour` を使い、両方とも無いと「5時間」のリングを灰色の「--」にする
 
 ## 6. 公開するときに確かめること
 

@@ -557,6 +557,19 @@ class ArgumentsTest(unittest.TestCase):
             plain = argparse.Namespace(title="Mac mini", ssd="/Volumes/SSD")  # --logo が無い常駐（テストの引数など）
             self.assertIsNone(cli._local_config(plain).logo)
 
+    def test_local_warnings_use_the_whole_header_row(self):
+        # 2026-11-02、この Mac の状態の画面も、注意は見出しの行をまるごと使って大きく出す（ユーザーの指示）
+        args = argparse.Namespace(title="Mac mini", ssd="/Volumes/SSD")
+        self.assertTrue(cli._local_config(args).large_alerts)
+        now = datetime(2026, 10, 15, 9, 0, tzinfo=timezone.utc)
+        reading = cli.local_monitor.build(cli.local_monitor.demo_sample("warning", now), now)
+        image = cli.monitor_screen.render(reading.status, cli.Assessment((), reading.warnings, frozenset()),
+                                          cli._local_config(args), note=reading.note)
+        stamp = [image.getpixel((x, y)) for x in range(380, 460) for y in range(8, 30)]
+        self.assertFalse(any(min(p) > 200 for p in stamp))  # 右上の時刻（白）を出さない
+        title = [image.getpixel((x, 20)) for x in range(20, 80)]
+        self.assertFalse(any(min(p) > 200 for p in title))  # 名前（白）を出さない
+
     def test_preview_size(self):
         for argv, expected in ((["preview"], "480x320"), (["preview", "--size", "1280x720"], "1280x720")):
             with self.subTest(argv=argv), mock.patch.object(cli, "cmd_preview", return_value=0) as preview:
