@@ -17,22 +17,25 @@ from datetime import datetime
 from PIL import Image, ImageDraw
 
 from . import gauge
-from .gauge import BACKGROUND, CARD, DARK_TRACK_MIX, LABEL, ORANGE, SECONDARY, _mix, rounded, tint
+from .gauge import BACKGROUND, DARK_TRACK_MIX, LABEL, ORANGE, SECONDARY, _mix, rounded, tint
 from .render import font
 from .usage import Meter, Snapshot
 
 HEIGHT = 720  # 寸法を決めた画面の高さ
 MARGIN = 60          # 左右の余白
-ROWS = (100, 410)    # 2 段の上端
-DIVIDER = 395        # 2 段の間の線
-NAME = (66, 52)      # 名前の基準線（段の上端から）・大きさ
-# 数字と下の行の大きさは、ユーザーの指示「使用量の数値をもう少し小さくして、その分リセットとあとを大きく」で、
-# 数字 140→110・% 50→40・下の行 36→46 にした（2026-11-03。下の行は大きくした分、基準線を 262→270 に下げた）
-NUMBER = (118, 110)  # 数字の基準線・大きさ
-UNIT = 40            # 「%」の大きさ（同日、70→50 をユーザーの指示で小さくし、数字に合わせて 40 にした）
+# 2 段の間の罫線を消し、段の間と下の余白を詰めた分で、名前 52→56・数字 110→120・% 40→44・棒の太さ 46→56・
+# 下の行 46→50 にした（2026-11-03、ユーザーの指示「3.5 モニターの罫線は消してその分項目を大きくして」）。
+# それまでの経緯: 数字 140→110・% 50→40・下の行 36→46（同日、「使用量の数値をもう少し小さくして、その分リセットと
+# あとを大きく」）、% 70→50（同日、「% はもう少し小さく」）
+ROWS = (84, 398)     # 2 段の上端
+NAME = (70, 56)      # 名前の基準線（段の上端から）・大きさ
+NUMBER = (122, 120)  # 数字の基準線・大きさ
+UNIT = 44            # 「%」の大きさ
 UNIT_GAP = 4         # 数字と「%」の間
-BAR = (150, 196)     # 棒の上端と下端
-LINE = (270, 46)     # 下の行の基準線・大きさ
+BAR = (156, 212)     # 棒の上端と下端
+LINE = (290, 50)     # 下の行の基準線・大きさ（収まらなければ LINE_MIN まで縮める）
+LINE_MIN = 36
+LINE_GAP = 32        # 下の行の、リセットと残り時間の間に残す幅
 # 見出しの右の時刻の大きさ（3.5 インチの寸法）。となりのこの Mac の状態の画面（monitor_screen の横置き、16）に
 # そろえる（2026-11-03 ユーザーの指示。ゲージ型の画面の 3.5 インチの既定は 13 で、並べると小さく見えた）。
 # 5.2 インチでは 36 px で、それまでと同じ
@@ -73,8 +76,16 @@ def render(snapshot: Snapshot | None, now: datetime, status: str | None = None,
     draw = ImageDraw.Draw(image)
     gauge._header(image, draw, layout, gauge.HEADER_BASELINE, "Claude Code", snapshot, status,
                   (icons or {}).get("claude"), STAMP)
-    draw.line((left, DIVIDER * s, right, DIVIDER * s), fill=CARD, width=max(1, sized(2)))
-    for meter, top in zip(meters, ROWS):
+    # 下の行（リセットと残り時間）は、2 段とも左右の間に LINE_GAP を残して収まる大きさにそろえる。寸法を高さの比で
+    # 縮めるので、横の狭い 3.5 インチ（3:2）では 50 のままだと週次の日時と残り時間がくっついた（2026-11-03）
+    lines = [(_reset_text(when), remain) for when, remain in (gauge.reset_lines(m.resets_at, now) for m in meters)]
+    line_size = sized(LINE[1])
+    while line_size > sized(LINE_MIN) and any(
+            font(line_size, 6).getlength(a) + font(line_size, 6).getlength(b) > right - left - LINE_GAP * s
+            for a, b in lines):
+        line_size -= 1
+    line_font = font(line_size, 6)
+    for meter, (reset_text, remain), top in zip(meters, lines, ROWS):
         draw.text((left, (top + NAME[0]) * s), meter.label, font=font(sized(NAME[1]), 6), fill=LABEL, anchor="ls")
         baseline = (top + NUMBER[0]) * s
         if meter.percent is None:
@@ -84,10 +95,8 @@ def render(snapshot: Snapshot | None, now: datetime, status: str | None = None,
             draw.text((right, baseline), "%", font=unit, fill=SECONDARY, anchor="rs")
             draw.text((right - unit.getlength("%") - UNIT_GAP * s, baseline), f"{round(meter.percent)}",
                       font=rounded(sized(NUMBER[1])), fill=LABEL, anchor="rs")
-        when, remain = gauge.reset_lines(meter.resets_at, now)
         baseline = (top + LINE[0]) * s
         # リセットと残り時間は、大きさも太さも同じ（2026-11-03、残り時間を W3 にしていたら小さく見えるとユーザーが指摘）
-        line_font = font(sized(LINE[1]), 6)
-        draw.text((left, baseline), _reset_text(when), font=line_font, fill=LABEL, anchor="ls")
+        draw.text((left, baseline), reset_text, font=line_font, fill=LABEL, anchor="ls")
         draw.text((right, baseline), remain, font=line_font, fill=LABEL, anchor="rs")
     return image

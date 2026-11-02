@@ -17,6 +17,11 @@ def near(pixel, color, tolerance=12):
     return all(abs(a - b) <= tolerance for a, b in zip(pixel, color))
 
 
+def right_ring_left():
+    """横置きの右の列のリングの左端（3.5 インチ）。"""
+    return ms.LANDSCAPE.cells[1][0] + ms.LANDSCAPE.ring[0] - ms.LANDSCAPE.ring[2]
+
+
 COUNTERS = (sm.CounterSpec("5xx エラー", "Example/Application", "Http5xx", 5),
             sm.CounterSpec("PHP エラー", "Example/Application", "PhpFatalError", 1))
 
@@ -65,10 +70,12 @@ class MonitorScreenTest(unittest.TestCase):
         start = 480 - ms.LANDSCAPE.inset - font(ms.LANDSCAPE.stamp_size, SMALL_WEIGHT).getlength("00:00 更新")
         self.assertGreater(start, ms.LANDSCAPE.pill[2])
 
-    def test_landscape_threshold_stays_left_of_the_divider(self):
+    def test_landscape_threshold_stays_left_of_the_right_column(self):
+        # 2026-11-03 に罫線を消した。左の列のしきい値は、右の列のリングの左端から 12 ピクセル以上離れる
         threshold_x, _, _, threshold_size = ms.LANDSCAPE.threshold
         end = ms.LANDSCAPE.cells[0][0] + threshold_x + font(threshold_size, SMALL_WEIGHT).getlength("しきい値 85%")
-        self.assertLess(end, ms.LANDSCAPE.dividers[0][0])
+        self.assertEqual(ms.LANDSCAPE.dividers, ())
+        self.assertLess(end, right_ring_left() - 12)
 
     def test_landscape_detail_stays_gray_and_the_number_has_no_percent_sign(self):
         # 2026-10-27、視認性を上げるため、しきい値を 14→15 ピクセルにし、% を外して数字を 30→38 にした。
@@ -103,7 +110,7 @@ class MonitorScreenTest(unittest.TestCase):
         self.assertTrue(all(b - a > 2 * radius + 20 for a, b in zip(xs, xs[1:])))
         # リングとしきい値の字は「直近 24 時間」の小見出しの上に収まる（上下のまとまりの間の罫線は 2026-11-03 に消した）
         self.assertEqual(large.dividers, ())
-        caption_x, caption_y, _caption, caption_size, _w, _a = large.headings[1]
+        caption_x, caption_y, _caption, caption_size, _w, _a = large.headings[-1]  # 「直近 24 時間」
         self.assertLess(cy + radius, large.threshold[1] - large.threshold[3])
         self.assertLess(large.threshold[1] + 3, caption_y - caption_size - 10)
         self.assertGreater(cy - radius, ms.BIG_BOX[2][1])  # 異常の 2 行の帯の下
@@ -140,26 +147,28 @@ class MonitorScreenTest(unittest.TestCase):
             self.assertEqual(image.getpixel((2, image.height - 2)), RED)
 
     def test_headings_under_a_two_line_alert_are_not_drawn(self):
-        # 2 行の異常の文言の帯は「サーバー」の小見出しまで伸びるので、その小見出しは描かない
+        # 2 行の異常の文言の帯にかかる小見出しは描かない（「サーバー」の小見出しがあった 2026-11-03 に入れた仕組み。
+        # 同日その小見出しは消したので、帯にかかる位置に小見出しを置いた配置で確かめる）
         cfg = config(counters=COUNTERS, large_alerts=True)
         long = "トップ 本文に必要な文字列が無い状態が続いていて、再読み込みしても戻らない"
         st = status_with_counters()
         assessment = sm.Assessment((long,), (), frozenset())
-        image = ms.render(st, assessment, cfg, layout=ms.LANDSCAPE_LARGE)
-        k = ms.LANDSCAPE_LARGE.k
-        _hx, hy, _text, size, _w, _a = ms.LANDSCAPE_LARGE.headings[0]
+        layout = replace(ms.LANDSCAPE_LARGE, headings=((26.7, 54.2, "サーバー", 12, 6, "ls"),))
+        image = ms.render(st, assessment, cfg, layout=layout)
+        k = layout.k
+        _hx, hy, _text, size, _w, _a = layout.headings[0]
         self.assertLessEqual(hy - size, ms.BIG_BOX[2][1])  # この小見出しは 2 行の帯にかかる位置にある
-        bare = ms.render(st, assessment, cfg, layout=replace(ms.LANDSCAPE_LARGE, headings=()))
+        bare = ms.render(st, assessment, cfg, layout=replace(layout, headings=()))
         band = (0, 0, 1280, round(ms.BIG_BOX[2][1] * k))  # 帯の下端までは、小見出しの無い配置と同じ
         self.assertEqual(image.crop(band).tobytes(), bare.crop(band).tobytes())
 
     def test_landscape_long_labels_fit_their_cells(self):
-        # 2026-10-27 に名前を 18→22 ピクセルにした。左の列の名前は区切り線の手前、右の列の名前は
-        # その下の「しきい値 90%」より右へ出ない
+        # 2026-10-27 に名前を 18→22、2026-11-03 に 24 ピクセルにした。左の列の名前は右の列のリングの手前、
+        # 右の列の名前はその下の「しきい値 90%」より右へ出ない
         label_x, _, _, label_size = ms.LANDSCAPE.label
         threshold_x, _, _, threshold_size = ms.LANDSCAPE.threshold
         width = max(font(label_size, 6).getlength(text) for text in ("ディスク", "スワップ"))
-        self.assertLess(ms.LANDSCAPE.cells[2][0] + label_x + width, ms.LANDSCAPE.dividers[0][0] - 4)
+        self.assertLess(ms.LANDSCAPE.cells[2][0] + label_x + width, right_ring_left() - 12)
         self.assertLessEqual(label_x + width, threshold_x + font(threshold_size, SMALL_WEIGHT).getlength("しきい値 90%"))
 
     def test_job_incidents_show_an_orange_dot_on_black(self):

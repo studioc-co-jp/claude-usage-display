@@ -50,8 +50,16 @@ class PaceTest(unittest.TestCase):
     def test_only_session_and_weekly_are_drawn(self):
         # Fable を使っていないので 2 項目だけ（2026-11-03 ユーザーの指示）。3 段目の位置は黒のまま
         image = pace.render(snapshot(), NOW, size=SIZE)
-        below = [image.getpixel((x, 700)) for x in range(pace.MARGIN, SIZE[0] - pace.MARGIN, 10)]
+        below = [image.getpixel((x, 714)) for x in range(pace.MARGIN, SIZE[0] - pace.MARGIN, 10)]
         self.assertTrue(all(p == gauge.BACKGROUND for p in below))
+
+    def test_no_line_between_the_rows(self):
+        # 2026-11-03、2 段の間の罫線を消した（ユーザーの指示）。1 段目の下の行と 2 段目の名前の間は黒だけ
+        image = pace.render(snapshot(), NOW, size=SIZE)
+        gap = range(pace.ROWS[0] + pace.LINE[0] + 14, pace.ROWS[1] + pace.NAME[0] - pace.NAME[1])
+        self.assertGreater(len(gap), 10)
+        self.assertTrue(all(image.getpixel((x, y)) == gauge.BACKGROUND
+                            for y in gap for x in range(pace.MARGIN, SIZE[0] - pace.MARGIN, 8)))
 
     def test_missing_values_and_fetch_errors_still_render(self):
         gone = Snapshot((Meter("5時間", None, None), Meter("週次", 9, NOW + timedelta(days=6))), NOW)
@@ -70,6 +78,20 @@ class PaceTest(unittest.TestCase):
         reset_end = pace.MARGIN + line.getlength("リセット 12/31(木) 23:59")
         remain_start = SIZE[0] - pace.MARGIN - line.getlength("あと6日23時間")  # 残り時間もリセットと同じ字
         self.assertLess(reset_end + 40, remain_start)
+
+    def test_bottom_line_keeps_a_gap_on_the_35_inch_display(self):
+        # 2026-11-03、3.5 インチ（横の狭い 3:2）で週次の日時と残り時間がくっついた。字を縮めて間を残す
+        long = Snapshot((Meter("5時間", 26.0, NOW + timedelta(hours=4, minutes=59)),
+                         Meter("週次", 74.0, NOW + timedelta(days=6, hours=23, minutes=59))), NOW)
+        image = pace.render(long, NOW, size=(480, 320))
+        s = 320 / pace.HEIGHT
+        top, bottom = round((pace.ROWS[1] + pace.LINE[0] - pace.LINE[1] * 0.8) * s), round((pace.ROWS[1] + pace.LINE[0]) * s)
+        inked = [any(min(image.getpixel((x, y))) > 120 for y in range(top, bottom)) for x in range(480)]
+        runs, gap = [], 0
+        for x in range(round(pace.MARGIN * s), 480 - round(pace.MARGIN * s)):
+            gap = 0 if inked[x] else gap + 1
+            runs.append(gap)
+        self.assertGreaterEqual(max(runs), round(pace.LINE_GAP * s * 0.8))  # 左右の文言の間に隙間がある
 
     def test_unit_is_smaller_than_half_of_the_number(self):
         # 2026-11-03、「% はもう少し小さく」（ユーザーの指示。数字 140 に対して 70 → 50）
