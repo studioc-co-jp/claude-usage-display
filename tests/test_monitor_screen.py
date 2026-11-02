@@ -221,6 +221,35 @@ class HiddenTitleTest(unittest.TestCase):
         lines, _ = ms._big_lines("ジョブ障害 2 件（nightly-backup ほか）", self.WIDTH, SMALL_WEIGHT)
         self.assertEqual(lines, ["ジョブ障害 2 件", "nightly-backup ほか"])
 
+    def test_text_without_separators_stays_on_one_line_when_it_fits(self):
+        # 2026-11-02 の実機。区切りの無い文言が 17 ピクセルの 1 行に収まると、2 行目が空のまま 2 行分の帯になっていた
+        text = 'ユーザー登録 本文に「id="edit-name"」が無い'
+        lines, f = ms._big_lines(text, 416, 6)
+        self.assertEqual(lines, [text])
+        self.assertEqual(f.size, 18)  # 1 行に収まる最も大きい大きさ
+
+    def test_big_text_has_equal_gaps_above_and_below(self):
+        # 2026-11-02、実機で「テキスト下の padding が大きすぎる。上下の隙間を合わせて」（ユーザーの指示）
+        cfg = config(title="example.com", large_alerts=True)
+        for size in (ms.BIG_SIZE, 20, ms.BIG_MIN):
+            for lines in (["監視の障害 1 件"], ["トップ HTTP 503（期待 200）", "ほか 1 件"]):
+                with self.subTest(size=size, lines=len(lines)):
+                    f = ms.font(size, 6)
+                    top, bottom = ms.BIG_BOX[len(lines)]
+                    baselines = ms._centered_baselines(lines, f, top, bottom)
+                    ink_top = baselines[0] + f.getbbox(lines[0], anchor="ls")[1]
+                    ink_bottom = baselines[-1] + f.getbbox(lines[-1], anchor="ls")[3]
+                    self.assertAlmostEqual(ink_top - top, bottom - ink_bottom, places=6)
+        # 赤の画面で、白い帯の中の赤い字の上下の隙間が、画素で 1 以内
+        red = status(values=(92, 61, 47, 3))
+        image = ms.render(red, sm.assess(red, cfg, NOW), cfg)
+        column = range(60, 420)
+        pill_rows = [y for y in range(0, 60) if near(image.getpixel((40, y)), (255, 255, 255), 30)]
+        text_rows = [y for y in range(0, 60) if any(near(image.getpixel((x, y)), RED, 60) for x in column)
+                     and min(pill_rows) < y < max(pill_rows)]
+        gap_top, gap_bottom = min(text_rows) - min(pill_rows), max(pill_rows) - max(text_rows)
+        self.assertLessEqual(abs(gap_top - gap_bottom), 1, (gap_top, gap_bottom))
+
     def test_text_that_cannot_be_split_is_cut_with_an_ellipsis(self):
         lines, f = ms._big_lines("あ" * 60, self.WIDTH, SMALL_WEIGHT)
         self.assertEqual(len(lines), 2)

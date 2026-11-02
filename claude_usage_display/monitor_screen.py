@@ -152,7 +152,8 @@ def _big_lines(text: str, width: float, weight: int, k: float = 1.0):
     """異常の文言を、1 行（BIG_SIZE）か、収まらなければ 2 行（BIG_SMALL → BIG_MIN）にする。
 
     2 行にするときは、区切りのよい位置（「名前: 理由」・「…　ほか N 件」・「件数（名前 ほか）」）を、この順に探し、
-    見つかった位置で収まる最も大きい大きさを使う。どこで分けても収まらなければ、字数で折り返し、2 行目は「…」で切る。
+    見つかった位置で収まる最も大きい大きさを使う。区切りが無ければ、1 行のまま収まる最も大きい大きさ（BIG_SMALL →
+    BIG_MIN）を使う。それでも収まらなければ、字数で折り返し、2 行目は「…」で切る。
     ``width`` は画面のピクセル、大きさは 3.5 インチの値を ``k`` 倍して使う。
     """
     big = font(_scaled(BIG_SIZE, k), weight)
@@ -167,6 +168,12 @@ def _big_lines(text: str, width: float, weight: int, k: float = 1.0):
             small = font(_scaled(size, k), weight)
             if all(small.getlength(p) <= width for p in parts):
                 return parts, small
+    # 区切りの無い文言（例「ユーザー登録 本文に「id=…」が無い」）は、1 行に収まるならそのまま出す。2026-11-02 までは
+    # 字数の折り返しへ進み、17 ピクセルで 1 行に収まると 2 行目が空のまま 2 行分の帯になって、下の隙間が大きかった
+    for size in range(BIG_SMALL, BIG_MIN - 1, -1):
+        small = font(_scaled(size, k), weight)
+        if small.getlength(text) <= width:
+            return [text], small
     small = font(_scaled(BIG_MIN, k), weight)
     first = ""
     for ch in text:
@@ -177,6 +184,23 @@ def _big_lines(text: str, width: float, weight: int, k: float = 1.0):
     while rest and small.getlength(rest) > width:
         rest = rest[:-2] + "…"
     return [first, rest], small
+
+
+BIG_BOX = {1: (3, 41), 2: (2, 54)}  # 大きな異常の文言の帯の上端と下端（行の数ごと。帯の無いオレンジの文言もこの中に置く）
+BIG_STEP = 22  # 2 行のときの基準線の間
+
+
+def _centered_baselines(lines: list[str], f, top: float, bottom: float, k: float = 1.0) -> list[float]:
+    """``top``〜``bottom`` の中で、字（1 行目の上端から最後の行の下端まで）の上下の隙間が等しくなる基準線。
+
+    字の上端と下端は、その文言をそのフォントで描いたときの実寸で測る（寸法は 3.5 インチの値。``f`` は k 倍の大きさ）。
+    2026-11-02 までは基準線を決め打ち（1 行 31、2 行 25・47）にしていたので、24 ピクセルより小さい字は下に寄った。
+    """
+    ink_top = f.getbbox(lines[0], anchor="ls")[1] / k
+    ink_bottom = f.getbbox(lines[-1], anchor="ls")[3] / k
+    span = BIG_STEP * (len(lines) - 1)
+    first = (top + bottom - span - ink_top - ink_bottom) / 2
+    return [first + BIG_STEP * i for i in range(len(lines))]
 
 
 def _alert_text(assessment: Assessment) -> str:
@@ -255,7 +279,8 @@ def render(status: ServerStatus | None, assessment: Assessment | None, config: M
     two_lines = red and layout.tall_pill is not None and len(assessment.alerts) > 1
     if big_lines:
         if red:
-            box = (pill[0], 3, pill[2], 41) if len(big_lines) == 1 else (pill[0], 2, pill[2], 54)
+            top, bottom = BIG_BOX[len(big_lines)]
+            box = (pill[0], top, pill[2], bottom)
             shapes.pill(box, WHITE, radius=(box[3] - box[1]) / 2 if len(big_lines) == 1 else 14)
     elif two_lines:
         shapes.pill(layout.tall_pill, WHITE, radius=16)
@@ -285,7 +310,7 @@ def render(status: ServerStatus | None, assessment: Assessment | None, config: M
         if stamp:
             draw.text(at(width - layout.inset, layout.title_baseline), stamp, font=stamp_font, fill=ink, anchor="rs")
     if big_lines:
-        baselines = (31,) if len(big_lines) == 1 else (25, 47)
+        baselines = _centered_baselines(big_lines, big_font, *BIG_BOX[len(big_lines)], k)
         for text, baseline in zip(big_lines, baselines):
             draw.text(at(center, baseline), text, font=big_font, fill=RED if red else ORANGE, anchor="ms")
     elif two_lines:
