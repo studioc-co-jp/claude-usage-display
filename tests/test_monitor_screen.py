@@ -88,6 +88,16 @@ class MonitorScreenTest(unittest.TestCase):
         self.assertLess(large.cells[0][0] + threshold_x + width, divider)
         self.assertLess(large.cells[1][0] + threshold_x + width, large.size[0] - large.inset)
         self.assertGreater(large.cells[1][0] + large.ring[0] - large.ring[2], divider)  # 右の列のリングは区切り線の右
+        # 同日、リングを半径 52→60 にした（ユーザーの指示）。上の段は異常の 2 行の帯の下、下の段は画面の内側に収まる
+        _, cy, radius, _ = large.ring
+        self.assertEqual(radius, 60)
+        self.assertGreaterEqual(large.cells[0][1] + cy - radius, ms.BIG_BOX[2][1] + 3)
+        self.assertLessEqual(large.cells[2][1] + cy + radius, 320 - 8)
+        line = large.dividers[1][1]
+        self.assertLess(large.cells[0][1] + cy + radius, line)  # 上の段のリングは横の区切り線の上
+        self.assertGreater(large.cells[2][1] + cy - radius, line)  # 下の段のリングは横の区切り線の下
+        number = ms.rounded(large.number[2]).getlength("100")
+        self.assertLess(number, 2 * (radius - large.ring[3]) - 6)  # 「100」もリングの内側に収まる
 
     def test_landscape_long_labels_fit_their_cells(self):
         # 2026-10-27 に名前を 18→22 ピクセルにした。左の列の名前は区切り線の手前、右の列の名前は

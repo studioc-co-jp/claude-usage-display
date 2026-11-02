@@ -96,14 +96,23 @@ PORTRAIT = _Layout(
 
 # 5.2 インチ（1280×720）。横置きの 2×2 を、高さの比 2.25 倍で描く（2026-11-02 にユーザーが見本で選んだ「案 1」を、
 # 2026-11-03 に入れた。docs/handover.md §4-23・§4-25）。3.5 インチの寸法での横幅は 1280 ÷ 2.25 ≒ 569 になるので、
-# 区切り線を中央に置き、区画の中身を 20 右へ寄せて左右の余白をそろえる。帯は横置きと同じ幅 248 で中央に置く
+# 区切り線を中央に置く。帯は横置きと同じ幅 248 で中央に置く。
+# リングは、実機を見たユーザーの指示で半径 52→60（外径 234→270 px）、数字を 38→44 にした（同日、見本の案 B）。
+# 縦に収まる最大の大きさで、上の段のリングの上端 57 は異常の 2 行の帯の下端（BIG_BOX、54）の下、下の段の下端 312 は
+# 画面（320）の内側。そのため上下の段を 48・183 に、横の区切り線を 184.5 に動かした。リングと文字のまとまり
+# （リング 120・間 9・15 ピクセルの「しきい値 80%」99）は、左右の区画の中央に置く
 _K_LARGE = 720 / 320
 _W_LARGE = 1280 / _K_LARGE
 _MID_LARGE = 20 + (_W_LARGE - 40) / 2
+_RING_LARGE = 60
+_TEXT_LARGE = 2 * _RING_LARGE + 9  # 名前としきい値の左端（区画の左から）
+_LEFT_LARGE = ((_MID_LARGE - 20) - (_TEXT_LARGE + 99)) / 2  # 区画の中で、まとまりを中央に置くための左の余白
 LANDSCAPE_LARGE = replace(
     LANDSCAPE, size=(_W_LARGE, 320), k=_K_LARGE, pill=(round(_W_LARGE / 2 - 124), 4, round(_W_LARGE / 2 + 124), 34),
-    cells=((40, 44), (_MID_LARGE + 30, 44), (40, 182), (_MID_LARGE + 30, 182)),
-    dividers=((_MID_LARGE, 56, _MID_LARGE, 304), (20, 182, _W_LARGE - 20, 182)))
+    cells=((20 + _LEFT_LARGE, 48), (_MID_LARGE + _LEFT_LARGE, 48), (20 + _LEFT_LARGE, 183),
+           (_MID_LARGE + _LEFT_LARGE, 183)),
+    ring=(_RING_LARGE, 69, _RING_LARGE, 12), label=(_TEXT_LARGE, 65, "ls", 22), number=(_RING_LARGE, 84, 44, 0, True),
+    threshold=(_TEXT_LARGE, 90, "ls", 15), dividers=((_MID_LARGE, 56, _MID_LARGE, 304), (20, 184.5, _W_LARGE - 20, 184.5)))
 
 
 def layout_for(size: tuple[int, int], portrait: bool = False) -> _Layout:
