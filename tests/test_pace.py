@@ -75,5 +75,12 @@ class PaceTest(unittest.TestCase):
         # 2026-11-03、「% はもう少し小さく」（ユーザーの指示。数字 140 に対して 70 → 50）
         self.assertLess(pace.UNIT, pace.NUMBER[1] / 2)
 
+    def test_stamp_matches_the_mac_screen_next_to_it(self):
+        # 2026-11-03、見出しの右の時刻を、となりのこの Mac の状態の画面（16 ピクセル）にそろえた（ユーザーの指示）
+        from claude_usage_display import monitor_screen
+
+        self.assertEqual(pace.STAMP, monitor_screen.LANDSCAPE.stamp_size)
+        self.assertEqual(gauge.layout_for(SIZE).pt(pace.STAMP), 36)  # 5.2 インチはそれまでと同じ 36 ピクセル
+
     def test_scales_to_the_small_screen(self):
         self.assertEqual(pace.render(snapshot(), NOW, size=(480, 320)).size, (480, 320))

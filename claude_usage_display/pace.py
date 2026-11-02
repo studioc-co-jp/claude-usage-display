@@ -33,6 +33,10 @@ UNIT = 40            # 「%」の大きさ（同日、70→50 をユーザーの
 UNIT_GAP = 4         # 数字と「%」の間
 BAR = (150, 196)     # 棒の上端と下端
 LINE = (270, 46)     # 下の行の基準線・大きさ
+# 見出しの右の時刻の大きさ（3.5 インチの寸法）。となりのこの Mac の状態の画面（monitor_screen の横置き、16）に
+# そろえる（2026-11-03 ユーザーの指示。ゲージ型の画面の 3.5 インチの既定は 13 で、並べると小さく見えた）。
+# 5.2 インチでは 36 px で、それまでと同じ
+STAMP = 16
 
 
 def _reset_text(when: str) -> str:
@@ -68,7 +72,7 @@ def render(snapshot: Snapshot | None, now: datetime, status: str | None = None,
     image = shapes.finish()
     draw = ImageDraw.Draw(image)
     gauge._header(image, draw, layout, gauge.HEADER_BASELINE, "Claude Code", snapshot, status,
-                  (icons or {}).get("claude"), layout.stamp)
+                  (icons or {}).get("claude"), STAMP)
     draw.line((left, DIVIDER * s, right, DIVIDER * s), fill=CARD, width=max(1, sized(2)))
     for meter, top in zip(meters, ROWS):
         draw.text((left, (top + NAME[0]) * s), meter.label, font=font(sized(NAME[1]), 6), fill=LABEL, anchor="ls")
