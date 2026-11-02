@@ -118,8 +118,44 @@ class RunnerTest(unittest.TestCase):
             "取得の間隔を空けるよう求められました（HTTP 429。Retry-After: 212 → 212 秒。次の取得は 23:00:01）",
             "取得の間隔を空けるよう求められました（HTTP 429。Retry-After: 212 → 212 秒。次の取得は 23:03:33）",
             "取得が戻りました（22:56:29 から 7 分 6 秒）",
+            "利用枠の API の枠: なし",  # 最初に取れたときに 1 度、枠の種類を記録する（見本の値は limits を持たない）
         ])
         self.assertIsNone(runner.status)
+
+    def test_missing_session_is_shown_as_a_notice_and_logged_once(self):
+        # 2026-11-02、Ultra の 5 時間の制限が外れたら気づけるよう、5 時間の枠が無い応答は見出しに注意として出す
+        now = datetime.now(timezone.utc)
+        weekly = (Meter("週次", 9, now), Meter("Fable週次", 0, now))
+        with_session = Snapshot((Meter("5時間", 16, now), *weekly), now, ("session・is_active", "weekly_all"))
+        without = Snapshot((Meter("5時間", None, None), *weekly), now, ("weekly_all",))
+        runner = cli.Runner(make_args())
+        with mock.patch.object(cli, "fetch_snapshot", side_effect=[with_session, without, without, with_session]), \
+                mock.patch.object(cli.time, "monotonic", side_effect=[0.0, 1000.0, 2000.0, 3000.0]), \
+                self.assertLogs(cli.log, "INFO") as logs:
+            notices = []
+            for _ in range(4):
+                runner._fetch_if_due()
+                notices.append(runner.notice)
+        self.assertEqual(notices, [None, cli.NO_SESSION, cli.NO_SESSION, None])
+        self.assertEqual([r.getMessage() for r in logs.records], [
+            "利用枠の API の枠: session・is_active、weekly_all",
+            "利用枠の API の枠: weekly_all",
+            "5 時間の枠が利用枠の API の応答にありません（limits に session が無いか、使用率が空）",
+            "利用枠の API の枠: session・is_active、weekly_all",
+            "5 時間の枠が利用枠の API の応答に戻りました",
+        ])
+        self.assertIsNone(runner.status)  # 取得の失敗ではない
+
+    def test_notice_is_drawn_in_the_header_and_fetch_errors_come_first(self):
+        runner = cli.Runner(make_args())
+        runner.notice = cli.NO_SESSION
+        draw = mock.Mock(wraps=cli.THEMES["gauge"])
+        with mock.patch.dict(cli.THEMES, {"gauge": draw}):
+            runner._draw((480, 320))
+            self.assertEqual(draw.call_args.args[2], cli.NO_SESSION)
+            runner.status = "通信できません"
+            runner._draw((480, 320))
+            self.assertEqual(draw.call_args.args[2], "通信できません")
 
     def test_other_failures_are_logged_once_while_they_continue(self):
         runner = cli.Runner(make_args())

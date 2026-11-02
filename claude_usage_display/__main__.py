@@ -46,7 +46,8 @@ from .usage import Meter, Snapshot, UsageError, fetch_snapshot, meter_labels
 log = logging.getLogger("claude_usage_display")
 
 DEVICE_RETRY_SECONDS = 10
-DEVICE_IDS = "・".join([f"{TURZX_VID:04x}:{pid:04x}" for pid in TURZX_MODELS] + [f"{VID:04x}:{PID:04x}"])
+NO_SESSION = "5時間の枠がなくなりました"  # 利用枠の API の応答に 5 時間の枠が無いとき、見出しに出す注意
+DEVICE_IDS ="・".join([f"{TURZX_VID:04x}:{pid:04x}" for pid in TURZX_MODELS] + [f"{VID:04x}:{PID:04x}"])
 
 DEFAULT_THEME = "gauge"
 SIZES = {"480x320": (480, 320), "1280x720": (1280, 720)}  # 3.5 インチと 5.2 インチ
@@ -341,6 +342,8 @@ class Runner(_Resident):
         self.display: TuringRevA | TurzxUsb | None = None
         self.snapshot: Snapshot | None = None
         self.status: str | None = None
+        self.notice: str | None = None  # 取得はできたが、見出しに注意として出すこと（5 時間の枠が無いとき）
+        self.limits_seen: tuple[str, ...] | None = None  # 前回の応答の limits の枠の種類（変わったときだけ記録する）
         self.next_fetch = 0.0
         self.failed_since: datetime | None = None  # 取得に失敗し始めた時刻（戻ったときに止まっていた長さを記録する）
         self.last_frame: bytes | None = None
@@ -406,6 +409,7 @@ class Runner(_Resident):
             self.status = None
             self.failed_since = None
             self.next_fetch = now + self.args.interval
+            self._watch_session(self.snapshot)
         except UsageError as e:
             wait = max(self.args.interval, e.retry_after or 0)
             if self.failed_since is None:
@@ -419,6 +423,22 @@ class Runner(_Resident):
             # Retry-After は応答の時点から数える。要求の前の now から数えると、応答にかかった分（429 で 1〜3 秒）だけ
             # 早く取りに行き、また 429 になって 2 分止まる（2026-10-21・10-26 に 4 回）
             self.next_fetch = time.monotonic() + wait
+
+    def _watch_session(self, snapshot: Snapshot) -> None:
+        """5 時間の枠が応答から無くなったら、見出しに注意を出す（2026-11-02 ユーザーの指示）。
+
+        Ultra は、アカウントの検証が済むと 5 時間の制限が無くなる。外れたら 5.2 インチと 3.5 インチの画面を
+        入れ替える（docs/handover.md §5 の 12）ので、気づけるようにする。limits の枠の種類は、変わったときに記録する。
+        """
+        if snapshot.limits != self.limits_seen:
+            log.info("利用枠の API の枠: %s", "、".join(snapshot.limits) or "なし")
+            self.limits_seen = snapshot.limits
+        missing = snapshot.meters[0].percent is None
+        if missing and self.notice is None:
+            log.warning("5 時間の枠が利用枠の API の応答にありません（limits に session が無いか、使用率が空）")
+        elif not missing and self.notice is not None:
+            log.info("5 時間の枠が利用枠の API の応答に戻りました")
+        self.notice = NO_SESSION if missing else None
 
     def _fetch_gemini_if_due(self) -> None:
         if self.gemini_reader is None or time.monotonic() < self.next_gemini:
@@ -441,11 +461,12 @@ class Runner(_Resident):
     def _draw(self, size: tuple[int, int]) -> Image.Image:
         now = datetime.now(timezone.utc)
         labels = meter_labels(self.args.model)
+        status = self.status or self.notice  # 取得の失敗を先に出す
         if self.gemini_reader is not None:
-            return gauge.render_with_gemini(self.snapshot, self.gemini, now, self.status, self.gemini_status, labels,
+            return gauge.render_with_gemini(self.snapshot, self.gemini, now, status, self.gemini_status, labels,
                                             GEMINI_LABELS, size=size, icons=self.icons)
         extra = {"icons": self.icons} if self.icons else {}
-        return THEMES[self.args.theme](self.snapshot, now, self.status, labels, size=size, **extra)
+        return THEMES[self.args.theme](self.snapshot, now, status, labels, size=size, **extra)
 
     def _seconds_to_wait(self) -> float:
         now = datetime.now()

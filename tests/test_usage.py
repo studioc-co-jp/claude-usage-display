@@ -5,7 +5,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 from claude_usage_display import usage
-from claude_usage_display.usage import parse_retry_after, parse_usage
+from claude_usage_display.usage import describe_limits, parse_retry_after, parse_usage
 
 FIXTURE = Path(__file__).parent / "fixtures" / "usage_response.json"
 
@@ -38,6 +38,25 @@ class ParseUsageTest(unittest.TestCase):
         self.assertEqual(session.percent, 26.0)
         self.assertEqual(weekly.percent, 3.0)
         self.assertIsNone(fable.percent)
+
+    def test_session_comes_only_from_limits_when_limits_exist(self):
+        # 検証済みの Ultra は 5 時間の制限が無い（2026-11-02）。limits から session が消えたら、古い five_hour が
+        # 残っていても使わず、値なしにする（画面で気づけるように）
+        body = load_fixture()
+        body["limits"] = [e for e in body["limits"] if e["kind"] != "session"]
+        self.assertIsNotNone(body.get("five_hour"))
+        session, weekly, _fable = parse_usage(body)
+        self.assertEqual((session.label, session.percent, session.resets_at), ("5時間", None, None))
+        self.assertIsNotNone(weekly.percent)
+
+    def test_describe_limits(self):
+        body = {"limits": [
+            {"kind": "session", "percent": 16, "is_active": True},
+            {"kind": "weekly_all", "percent": 9, "is_active": False},
+            {"kind": "weekly_scoped", "scope": {"model": {"id": None, "display_name": "Fable"}}, "is_active": False},
+        ]}
+        self.assertEqual(describe_limits(body), ("session・is_active", "weekly_all", "weekly_scoped（Fable）"))
+        self.assertEqual(describe_limits({}), ())
 
     def test_limits_not_a_list_degrades_to_legacy_windows(self):
         body = load_fixture()

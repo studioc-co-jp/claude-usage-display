@@ -37,6 +37,7 @@ class Meter:
 class Snapshot:
     meters: tuple[Meter, ...]
     fetched_at: datetime
+    limits: tuple[str, ...] = ()  # 応答の limits にあった枠の種類（ログ用。describe_limits）
 
 
 class UsageError(Exception):
@@ -199,13 +200,33 @@ def parse_usage(body: dict, model: str = "Fable") -> tuple[Meter, ...]:
         scoped_label,
         _pick([e for e in limits if e.get("kind") == "weekly_scoped" and _model_matches(e, model)]),
     )
+    # limits があるときは、5 時間の枠も limits だけで決める。検証済みの Ultra には 5 時間の制限が無い
+    # （公式の記事「What is the Ultra plan?」）。古い five_hour が残っていても使わず、無くなったことが画面に出るようにする
+    legacy_session = None if limits else _from_window(session_label, body.get("five_hour"))
     return (
-        session or _from_window(session_label, body.get("five_hour")) or Meter(session_label, None, None),
+        session or legacy_session or Meter(session_label, None, None),
         weekly or _from_window(weekly_label, body.get("seven_day")) or Meter(weekly_label, None, None),
         scoped or Meter(scoped_label, None, None),
     )
 
 
+def describe_limits(body: dict) -> tuple[str, ...]:
+    """limits の枠を「種類（モデル）」で並べる。is_active が true の枠には「・is_active」を付ける。
+
+    API の形は公式に説明されていないので、5 時間の制限が外れたときなどに何が変わったかを、ログで追えるようにする。
+    """
+    described = []
+    for entry in _limits(body):
+        text = str(entry.get("kind"))
+        model = (((entry.get("scope") or {}).get("model")) or {}).get("display_name")
+        if isinstance(model, str):
+            text += f"（{model}）"
+        if entry.get("is_active") is True:
+            text += "・is_active"
+        described.append(text)
+    return tuple(described)
+
+
 def fetch_snapshot(model: str = "Fable") -> Snapshot:
     body = fetch_raw(read_access_token())
-    return Snapshot(parse_usage(body, model), datetime.now(timezone.utc))
+    return Snapshot(parse_usage(body, model), datetime.now(timezone.utc), describe_limits(body))
