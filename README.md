@@ -78,9 +78,8 @@ nuits_jp（NAKAMURA Atsushi）さんの X の記事「[AI専用ダッシュボ�
 
 Fable 週次を見なくてよいときは、5 時間と週次の 2 つだけを、太い横棒で出す画面（`--theme pace`）にできます。この Mac では、3.5 インチの 1 台をこの画面にしています（5.2 インチ向けに作り、3.5 インチでは高さの比で縮めて描きます）。
 
-- 2 本の棒は同じ幅・同じ左端なので、棒の端の位置で 2 つを比べられます。数字は右上に大きく出し、下の行は左にリセットの日時、右に残り時間です
-- 棒の上の白い目印は、枠の時間（5 時間・7 日）のうち過ぎた割合で、名前の右に「経過 N%」と出します。色の付いた部分が目印より右なら、時間の進みより速く使っていて、この速さのままだとリセットの前に上限に届きます
-- Apple の Human Interface Guidelines の [Gauges](https://developer.apple.com/design/human-interface-guidelines/gauges)（直線の容量ゲージ）と、[Widgets](https://developer.apple.com/design/human-interface-guidelines/widgets) の「大きいサイズでは、小さいサイズの中身を広げて埋めるのではなく、より詳しい見せ方を足す」を手本にしました
+- 2 本の棒は同じ幅・同じ左端なので、棒の端の位置で 2 つを比べられます。数字は右上に出し、下の行は左にリセットの日時、右に残り時間です
+- Apple の Human Interface Guidelines の [Gauges](https://developer.apple.com/design/human-interface-guidelines/gauges)（直線の容量ゲージ）を手本にしました
 
 ![5時間と週次の 2 つを出す 5.2 インチの画面（見本の値）](docs/images/pace-1280x720.png)
 

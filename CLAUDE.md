@@ -32,7 +32,7 @@ Claude Code の利用枠（5 時間・週次・Fable 週次）を、USB でつ�
 
 - 依存は `requirements.txt`（版を固定）。libusb は Homebrew で入れる
 - ゲージ型は、3.5 インチ（480×320）の寸法を定数で持ち、`gauge.Layout` が高さの比で拡大する（5.2 インチの 1280×720 は 2.25 倍）。5.2 インチは、そのうえでカードの中身を 1.2 倍、見出しの時刻を 16 pt 相当にし（2026-10-13）、リングの弧の青を `(0, 105, 255)` にし、カードの面を描かずに黒地に縦の区切り線を引き、リングを 1.15 倍にして「あと…」を日時に寄せる（2026-10-15。リングの地は 3.5 インチのサーバーの状態の画面と同じく黒へ寄せる。名前の位置は `gauge.content_top` で固定）（`gauge.LARGE`・`layout_for`）。寸法を変えるときは 480×320 の値を変え、1280×720 でも `preview --size 1280x720` で確かめる。480×320 の画像は、拡大の仕組みを入れる前と 1 ピクセルも変わっていない（2026-10-09 に確かめた）
-- 画面は 3 種類ある。既定のゲージ型は `claude_usage_display/gauge.py`、横棒の画面（`--theme classic`）は `claude_usage_display/render.py`。ユーザーがゲージ型を選んだうえで、戻せるように横棒の画面を残している（2026-10-05）。利用枠は、5時間と週次の 2 つを経過の目印つきの横棒で出す画面（`--theme pace`、`claude_usage_display/pace.py`。寸法は 1280×720 のピクセルで持ち、3.5 インチでは高さの比で縮める）で動かしている（2026-11-03 ユーザーが見本から選んだ。`docs/handover.md` §4-24）
+- 画面は 3 種類ある。既定のゲージ型は `claude_usage_display/gauge.py`、横棒の画面（`--theme classic`）は `claude_usage_display/render.py`。ユーザーがゲージ型を選んだうえで、戻せるように横棒の画面を残している（2026-10-05）。利用枠は、5時間と週次の 2 つを太い横棒で出す画面（`--theme pace`、`claude_usage_display/pace.py`。寸法は 1280×720 のピクセルで持ち、3.5 インチでは高さの比で縮める）で動かしている（2026-11-03 ユーザーが見本から選んだ。`docs/handover.md` §4-24）
 - **2026-11-03 から、5.2 インチはサーバーの状態の画面、3.5 インチの 1 台目（USB の位置 `0x00120000`）は利用枠の画面**（いちばん大切なサーバーの状態を、いちばん大きい画面に出す。`docs/handover.md` §4-25）。サーバーの状態の画面の 5.2 インチの配置は `monitor_screen.LANDSCAPE_LARGE`（3.5 インチの寸法で書き、描くときに 2.25 倍する）
 - 画面の色は、送る前に RGB565 へ落ちる。中間の灰色は緑に寄るので、新しい灰色を足すときは RGB565 でそのまま表せる値にする（`tests/test_gauge.py` の `test_card_color_survives_rgb565`）
 - 13 ピクセル以下になりうる文字は `render.SMALL_WEIGHT`（W4）で書く。ヒラギノ角ゴシック W3 は 12・13 ピクセルで「4」の横棒が消える（`tests/test_render.py` の `test_small_weight_keeps_crossbar_of_four`、`docs/handover.md` §4-8）

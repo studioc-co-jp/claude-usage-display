@@ -121,7 +121,7 @@ def _classic(snapshot, now, status=None, labels=("5時間", "週次", "Fable週�
     return fit_to(render.render(snapshot, now, status, labels), size)
 
 
-# 画面のデザイン。classic は最初に作った横棒の画面。pace は 5時間と週次の 2 つを太い横棒と経過の目印で出す
+# 画面のデザイン。classic は最初に作った横棒の画面。pace は 5時間と週次の 2 つを太い横棒で出す
 # 5.2 インチ向けの画面（2026-11-03）。どれも size=(幅, 高さ) を受け取る
 THEMES = {"gauge": gauge.render, "classic": _classic, "pace": pace.render}
 
@@ -770,7 +770,7 @@ def main(argv: list[str] | None = None) -> int:
     preview.set_defaults(func=cmd_preview)
 
     theme_help = (f"画面のデザイン（既定: {DEFAULT_THEME}。classic は横棒の画面、"
-                  "pace は 5時間と週次を経過の目印つきの横棒で出す 5.2 インチ向けの画面）")
+                  "pace は 5時間と週次の 2 つを太い横棒で出す 5.2 インチ向けの画面）")
     preview.add_argument("--theme", choices=THEMES, default=DEFAULT_THEME, help=theme_help)
 
     def add_gemini_options(p) -> None:
