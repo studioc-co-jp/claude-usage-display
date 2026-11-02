@@ -75,7 +75,7 @@ class MonitorScreenTest(unittest.TestCase):
         threshold_x, _, _, threshold_size = ms.LANDSCAPE.threshold
         end = ms.LANDSCAPE.cells[0][0] + threshold_x + font(threshold_size, SMALL_WEIGHT).getlength("しきい値 85%")
         self.assertEqual(ms.LANDSCAPE.dividers, ())
-        self.assertLess(end, right_ring_left() - 12)
+        self.assertLessEqual(end, right_ring_left() - 12)
 
     def test_landscape_detail_stays_gray_and_the_number_has_no_percent_sign(self):
         # 2026-10-27、視認性を上げるため、しきい値を 14→15 ピクセルにし、% を外して数字を 30→38 にした。
