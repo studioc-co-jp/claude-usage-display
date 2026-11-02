@@ -101,7 +101,11 @@ class MonitorScreenTest(unittest.TestCase):
         xs = [x for x, _ in large.cells]
         self.assertEqual(len(xs), 4)
         self.assertTrue(all(b - a > 2 * radius + 20 for a, b in zip(xs, xs[1:])))
-        self.assertLess(cy + radius, large.dividers[0][1])
+        # リングとしきい値の字は「直近 24 時間」の小見出しの上に収まる（上下のまとまりの間の罫線は 2026-11-03 に消した）
+        self.assertEqual(large.dividers, ())
+        caption_x, caption_y, _caption, caption_size, _w, _a = large.headings[1]
+        self.assertLess(cy + radius, large.threshold[1] - large.threshold[3])
+        self.assertLess(large.threshold[1] + 3, caption_y - caption_size - 10)
         self.assertGreater(cy - radius, ms.BIG_BOX[2][1])  # 異常の 2 行の帯の下
         self.assertLess(ms.rounded(large.number[2]).getlength("100"), 2 * (radius - width) - 6)
         # 件数の行は画面の内側に収まる
