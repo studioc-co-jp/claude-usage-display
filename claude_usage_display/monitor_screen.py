@@ -133,10 +133,11 @@ LANDSCAPE_LARGE = replace(
     # 数字 61→70 px にした（同日、ユーザーの指示）
     cells=tuple((_px(190 + 300 * i), 0) for i in range(4)),  # リングの中心の x（区画は幅 300 px で 4 つ）
     ring=(0, _px(240), _px(100), _px(22)), label=(0, _px(380), "ms", 14), number=(0, _px(265), 31, 0, True),
-    threshold=(0, _px(410), "ms", 11), dividers=((_px(40), _px(430), _px(1240), _px(430)),),
+    # 罫線の上下の隙間をそろえて広げ、下のまとまりを下へ寄せて画面の下の余白を減らした（同日、ユーザーの指示）
+    threshold=(0, _px(410), "ms", 11), dividers=((_px(40), _px(445), _px(1240), _px(445)),),
     headings=((_px(60), _px(122), "サーバー", 12, 6, "ls"),
-              (_px(60), _px(466), "直近 24 時間（1 時間ごと）", 10, SMALL_WEIGHT, "ls")),
-    counter_rows=_CounterRows(top=_px(478), height=_px(108), left=_px(60), right=_px(1220), baseline=_px(68),
+              (_px(60), _px(498), "直近 24 時間（1 時間ごと）", 10, SMALL_WEIGHT, "ls")),
+    counter_rows=_CounterRows(top=_px(504), height=_px(108), left=_px(60), right=_px(1220), baseline=_px(68),
                               spark=(_px(330), _px(560), _px(52), _px(76)), label_size=15, number_size=22,
                               unit_size=12))
 
