@@ -39,9 +39,12 @@ DETAIL_LINE = 18
 
 @dataclass(frozen=True)
 class _Layout:
-    """配置。座標はすべて画面のピクセル。区画の中の位置は区画の左上から測る。"""
+    """配置。座標はすべて 3.5 インチの画面のピクセル。区画の中の位置は区画の左上から測る。
 
-    size: tuple[int, int]
+    ``k`` は、描くときに座標と字の大きさに掛ける倍率（5.2 インチは高さの比 720 ÷ 320 = 2.25）。
+    """
+
+    size: tuple[float, float]
     inset: int                                   # 見出しの左右の余白
     title_baseline: float                        # 名前と時刻の行
     pill: tuple[int, int, int, int]              # 赤の状態でアラートを出す白い帯
@@ -60,6 +63,7 @@ class _Layout:
     number: tuple[float, float, int, int, bool]  # 数字の位置・大きさ・% の大きさ（0 なら出さない）・中央にそろえるか
     threshold: tuple[float, float, str, int]     # しきい値の位置・anchor・大きさ
     dividers: tuple[tuple[float, float, float, float], ...]
+    k: float = 1.0
 
 
 LANDSCAPE = _Layout(
@@ -92,24 +96,29 @@ PORTRAIT = _Layout(
 
 
 class _Shapes:
-    def __init__(self, size, background):
-        self.size = size
-        self.image = Image.new("RGB", (size[0] * SCALE, size[1] * SCALE), background)
+    """図形の下書き。座標は 3.5 インチの寸法で受け取り、``k`` 倍の画面に描く。"""
+
+    def __init__(self, size, background, k: float = 1.0):
+        # 大きい画面は、拡大して描く倍率を下げ、描く大きさを 3.5 インチと同じくらいにする（gauge と同じ）
+        supersample = SCALE if k == 1 else max(2, round(SCALE / k))
+        self.factor = SCALE if k == 1 else k * supersample
+        self.size = (round(size[0] * k), round(size[1] * k))
+        self.image = Image.new("RGB", (self.size[0] * supersample, self.size[1] * supersample), background)
         self.draw = ImageDraw.Draw(self.image)
 
     def _box(self, x0, y0, x1, y1):
-        return x0 * SCALE, y0 * SCALE, x1 * SCALE, y1 * SCALE
+        return x0 * self.factor, y0 * self.factor, x1 * self.factor, y1 * self.factor
 
     def circle(self, cx, cy, r, fill):
         self.draw.ellipse(self._box(cx - r, cy - r, cx + r, cy + r), fill=fill)
 
     def pill(self, box, fill, radius: float | None = None):
         radius = (box[3] - box[1]) / 2 if radius is None else radius
-        self.draw.rounded_rectangle(self._box(*box), radius * SCALE, fill=fill)
+        self.draw.rounded_rectangle(self._box(*box), radius * self.factor, fill=fill)
 
     def ring(self, cx, cy, radius, ring_width, percent: float | None, color, track):
         box = self._box(cx - radius, cy - radius, cx + radius, cy + radius)
-        width = round(ring_width * SCALE)
+        width = round(ring_width * self.factor)
         self.draw.ellipse(box, outline=track, width=width)
         if percent is None or percent <= 0:
             return
@@ -134,13 +143,19 @@ BIG_SMALL = 21  # 1 行に収まらないとき、2 行にして使う大きさ�
 BIG_MIN = 17
 
 
-def _big_lines(text: str, width: float, weight: int):
+def _scaled(size: int, k: float) -> int:
+    """3.5 インチの字の大きさを、``k`` 倍の画面の大きさにする。"""
+    return size if k == 1 else round(size * k)
+
+
+def _big_lines(text: str, width: float, weight: int, k: float = 1.0):
     """異常の文言を、1 行（BIG_SIZE）か、収まらなければ 2 行（BIG_SMALL → BIG_MIN）にする。
 
     2 行にするときは、区切りのよい位置（「名前: 理由」・「…　ほか N 件」・「件数（名前 ほか）」）を、この順に探し、
     見つかった位置で収まる最も大きい大きさを使う。どこで分けても収まらなければ、字数で折り返し、2 行目は「…」で切る。
+    ``width`` は画面のピクセル、大きさは 3.5 インチの値を ``k`` 倍して使う。
     """
-    big = font(BIG_SIZE, weight)
+    big = font(_scaled(BIG_SIZE, k), weight)
     if big.getlength(text) <= width:
         return [text], big
     for sep, tail in ((": ", ""), ("　ほか", "ほか"), ("（", "")):
@@ -149,10 +164,10 @@ def _big_lines(text: str, width: float, weight: int):
             continue
         parts = [head, (tail + rest).removesuffix("）")]
         for size in range(BIG_SMALL, BIG_MIN - 1, -1):
-            small = font(size, weight)
+            small = font(_scaled(size, k), weight)
             if all(small.getlength(p) <= width for p in parts):
                 return parts, small
-    small = font(BIG_MIN, weight)
+    small = font(_scaled(BIG_MIN, k), weight)
     first = ""
     for ch in text:
         if small.getlength(first + ch) > width:
@@ -170,14 +185,22 @@ def _alert_text(assessment: Assessment) -> str:
 
 
 def render(status: ServerStatus | None, assessment: Assessment | None, config: MonitorConfig,
-           fetch_error: str | None = None, portrait: bool = False, note: str | None = None) -> Image.Image:
+           fetch_error: str | None = None, portrait: bool = False, note: str | None = None,
+           layout: _Layout | None = None) -> Image.Image:
     """``status`` は最後に取れた値（まだ無ければ None）。``fetch_error`` は直近の取得の失敗の説明。
 
     ``note`` は、異常が無いときに見出しの行へ緑の点と出す文言（無ければ、監視の状態があるとき「監視 正常」）。
     この Mac の状態の画面が、最後のバックアップの時刻を出すのに使う。
+    ``layout`` を渡すと、``portrait`` の代わりにその配置で描く。
     """
-    layout = PORTRAIT if portrait else LANDSCAPE
+    layout = layout or (PORTRAIT if portrait else LANDSCAPE)
     width = layout.size[0]
+    # 配置は 3.5 インチの寸法で決め、描くときに k 倍する。length は画面のピクセルの幅を 3.5 インチの寸法に戻す
+    k = layout.k
+    at = (lambda x, y: (x, y)) if k == 1 else (lambda x, y: (x * k, y * k))
+    sized = lambda size: _scaled(size, k)  # noqa: E731
+    length = lambda f, text: f.getlength(text) / k  # noqa: E731
+    fit = lambda text, room, size, weight: fit_font(text, room * k, sized(size), weight)  # noqa: E731
     red = assessment is not None and assessment.red
     background = RED if red else BACKGROUND
     faint = _mix(WHITE, RED, 0.45) if red else SECONDARY
@@ -187,7 +210,7 @@ def render(status: ServerStatus | None, assessment: Assessment | None, config: M
     specs = [m.spec for m in metrics] or list(config.metrics)
     ring_x, ring_y, radius, ring_width = layout.ring
 
-    shapes = _Shapes(layout.size, background)
+    shapes = _Shapes(layout.size, background, k)
     for index, spec in enumerate(specs):
         x, y = layout.cells[index]
         value = metrics[index].value if metrics else None
@@ -204,21 +227,22 @@ def render(status: ServerStatus | None, assessment: Assessment | None, config: M
     title_left = layout.inset + (ICON_SIZE + ICON_GAP if config.logo else 0)
     same_row = layout.pill[1] < layout.title_baseline
     stamp = f"{status.fetched_at.astimezone(JST):%H:%M} " + ("時点" if fetch_error else "更新") if status else ""
-    stamp_font = font(layout.stamp_size, SMALL_WEIGHT)
-    title_right = width / 2 if same_row else width - layout.inset - stamp_font.getlength(stamp) - TITLE_GAP
-    title_font = fit_font(config.title, title_right - title_left, 15, 6)
+    stamp_font = font(sized(layout.stamp_size), SMALL_WEIGHT)
+    title_right = width / 2 if same_row else width - layout.inset - length(stamp_font, stamp) - TITLE_GAP
+    title_font = fit(config.title, title_right - title_left, 15, 6)
     pill = layout.pill
     if same_row:
-        pill = (max(pill[0], round(title_left + title_font.getlength(config.title) + TITLE_GAP)), *pill[1:])
-    # 異常の文言を大きく出す設定（横置きだけ）: 異常のあるときだけ、見出しの名前を出さず、名前の分だけ帯と文言を
-    # 左へ広げる。異常が無いときは、名前を出し、点と短い文言のまま
+        pill = (max(pill[0], round(title_left + length(title_font, config.title) + TITLE_GAP)), *pill[1:])
+    # 異常の文言を大きく出す設定（横置きだけ）: 異常のあるときだけ、見出しのロゴ・名前・右上の時刻を出さず、
+    # 見出しの行をまるごと帯と文言に使う（2026-11-02 ユーザーの指示。それまでは名前だけを消していた）。
+    # 異常が無いときは、ロゴ・名前・時刻を出し、点と短い文言のまま
     big_text = None
     if config.large_alerts and not portrait:
         big_text = _alert_text(assessment) if red else (
             fetch_error or (assessment.warnings[0] if assessment and assessment.warnings else None))
     big = bool(big_text)
     if big:
-        pill = (title_left, pill[1], round(width - layout.inset - stamp_font.getlength(stamp) - TITLE_GAP), pill[3])
+        pill = (layout.inset, pill[1], round(width - layout.inset), pill[3])
     center = (pill[0] + pill[2]) / 2
 
     # 監視の状態: 赤の状態は白い帯にアラート、それ以外は点と短い文言
@@ -227,7 +251,7 @@ def render(status: ServerStatus | None, assessment: Assessment | None, config: M
     warn = False
     big_lines = big_font = None
     if big:
-        big_lines, big_font = _big_lines(big_text, pill_width - 24, 6 if red else SMALL_WEIGHT)
+        big_lines, big_font = _big_lines(big_text, (pill_width - 24) * k, 6 if red else SMALL_WEIGHT, k)
     two_lines = red and layout.tall_pill is not None and len(assessment.alerts) > 1
     if big_lines:
         if red:
@@ -244,8 +268,8 @@ def render(status: ServerStatus | None, assessment: Assessment | None, config: M
             message = note if note is not None else ("監視 正常" if status.monitor is not None else None)
         if message:
             dot_space = layout.dot_radius * 2 + 5
-            message_font = fit_font(message, pill_width - 20, layout.status_size, SMALL_WEIGHT)
-            message_left = center - (message_font.getlength(message) + dot_space) / 2 + dot_space
+            message_font = fit(message, pill_width - 20, layout.status_size, SMALL_WEIGHT)
+            message_left = center - (length(message_font, message) + dot_space) / 2 + dot_space
             shapes.circle(message_left - layout.dot_radius - 5, layout.dot_y, layout.dot_radius,
                           ORANGE if warn else GREEN)
     image = shapes.finish()
@@ -253,34 +277,35 @@ def render(status: ServerStatus | None, assessment: Assessment | None, config: M
 
     # 見出し
     ink = WHITE if red else LABEL
-    if config.logo:
-        paste_mark(image, _logo(config.logo), layout.inset, layout.title_baseline - LOGO_RISE, ICON_SIZE)
     if not big:
-        draw.text((title_left, layout.title_baseline), config.title, font=title_font, fill=ink, anchor="ls")
-    if stamp:
-        draw.text((width - layout.inset, layout.title_baseline), stamp, font=stamp_font, fill=ink, anchor="rs")
+        if config.logo:
+            paste_mark(image, _logo(config.logo), *at(layout.inset, layout.title_baseline - LOGO_RISE),
+                       sized(ICON_SIZE))
+        draw.text(at(title_left, layout.title_baseline), config.title, font=title_font, fill=ink, anchor="ls")
+        if stamp:
+            draw.text(at(width - layout.inset, layout.title_baseline), stamp, font=stamp_font, fill=ink, anchor="rs")
     if big_lines:
         baselines = (31,) if len(big_lines) == 1 else (25, 47)
         for text, baseline in zip(big_lines, baselines):
-            draw.text((center, baseline), text, font=big_font, fill=RED if red else ORANGE, anchor="ms")
+            draw.text(at(center, baseline), text, font=big_font, fill=RED if red else ORANGE, anchor="ms")
     elif two_lines:
         first, second = layout.tall_baselines
         text = assessment.alerts[0]
-        draw.text((center, first), text, font=fit_font(text, pill_width - 24, layout.alert_size, 6), fill=RED,
+        draw.text(at(center, first), text, font=fit(text, pill_width - 24, layout.alert_size, 6), fill=RED,
                   anchor="ms")
-        draw.text((center, second), f"ほか {len(assessment.alerts) - 1} 件", font=font(15, 6), fill=RED,
+        draw.text(at(center, second), f"ほか {len(assessment.alerts) - 1} 件", font=font(sized(15), 6), fill=RED,
                   anchor="ms")
     elif red:
         text = _alert_text(assessment)
-        draw.text((center, layout.status_baseline - 1 if not portrait else layout.status_baseline + 1), text,
-                  font=fit_font(text, pill_width - 24, layout.alert_size, 6), fill=RED, anchor="ms")
+        draw.text(at(center, layout.status_baseline - 1 if not portrait else layout.status_baseline + 1), text,
+                  font=fit(text, pill_width - 24, layout.alert_size, 6), fill=RED, anchor="ms")
     elif message:
-        draw.text((message_left, layout.status_baseline), message, font=message_font,
+        draw.text(at(message_left, layout.status_baseline), message, font=message_font,
                   fill=ORANGE if warn else LABEL, anchor="ls")
 
     # 2×2
-    for line in layout.dividers:
-        draw.line(line, fill=divider, width=1)
+    for x0, y0, x1, y1 in layout.dividers:
+        draw.line((*at(x0, y0), *at(x1, y1)), fill=divider, width=sized(1))
     label_x, label_y, label_anchor, label_size = layout.label
     number_x, number_y, number_size, unit_size, centered = layout.number
     threshold_x, threshold_y, threshold_anchor, threshold_size = layout.threshold
@@ -288,21 +313,23 @@ def render(status: ServerStatus | None, assessment: Assessment | None, config: M
         x, y = layout.cells[index]
         value = metrics[index].value if metrics else None
         strong = WHITE if (not red or spec.label in alerting) else faint
-        draw.text((x + label_x, y + label_y), spec.label, font=font(label_size, 6), fill=strong, anchor=label_anchor)
+        draw.text(at(x + label_x, y + label_y), spec.label, font=font(sized(label_size), 6), fill=strong,
+                  anchor=label_anchor)
         number = "--" if value is None else f"{value:.0f}"
-        number_font, unit_font = rounded(number_size), rounded(unit_size) if unit_size > 0 else None
-        number_width = draw.textlength(number, font=number_font)
+        number_font = rounded(sized(number_size))
+        unit_font = rounded(sized(unit_size)) if unit_size > 0 else None
+        number_width = length(number_font, number)
         gap = 1 if centered else 2
         sign = value is not None and unit_size > 0
-        unit_width = draw.textlength("%", font=unit_font) + gap if sign else 0
+        unit_width = length(unit_font, "%") + gap if sign else 0
         left = x + number_x - ((number_width + unit_width) / 2 if centered else 0)
-        draw.text((left, y + number_y), number, font=number_font, fill=strong, anchor="ls")
+        draw.text(at(left, y + number_y), number, font=number_font, fill=strong, anchor="ls")
         if sign:
-            draw.text((left + number_width + gap, y + number_y), "%", font=unit_font, fill=faint, anchor="ls")
+            draw.text(at(left + number_width + gap, y + number_y), "%", font=unit_font, fill=faint, anchor="ls")
         detail = metrics[index].detail if metrics and metrics[index].detail is not None else None
         lines = detail if detail is not None else (f"しきい値 {spec.threshold:g}%",)
         line_step = max(DETAIL_LINE, threshold_size + 4)  # 14 ピクセルまでは 18、大きくしたら字に合わせて広げる
         for line_index, line in enumerate(lines):
-            draw.text((x + threshold_x, y + threshold_y + line_step * line_index), line,
-                      font=font(threshold_size, SMALL_WEIGHT), fill=faint, anchor=threshold_anchor)
+            draw.text(at(x + threshold_x, y + threshold_y + line_step * line_index), line,
+                      font=font(sized(threshold_size), SMALL_WEIGHT), fill=faint, anchor=threshold_anchor)
     return image

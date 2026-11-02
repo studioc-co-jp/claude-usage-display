@@ -235,10 +235,10 @@ class HiddenTitleTest(unittest.TestCase):
         shown, large = config(title="example.com"), config(title="example.com", large_alerts=True)
         left = ms.LANDSCAPE.inset
 
-        def title_ink(cfg, st):  # 名前があった位置（ロゴの無い設定なので左端）に、黒（または赤）以外の画素があるか
+        def title_ink(cfg, st):  # 名前があった位置（ロゴの無い設定なので左端）に、名前の白があるか
+            # （2026-11-02 から、異常の文言も左端から出るので、オレンジの字とは色で見分ける）
             image = ms.render(st, sm.assess(st, cfg, NOW), cfg)
-            ground = image.getpixel((2, 300))
-            return any(not near(image.getpixel((x, 20)), ground) for x in range(left, left + 60))
+            return any(min(image.getpixel((x, 20))) > 200 for x in range(left, left + 60))
 
         # 異常が無いときは、設定があっても名前を出す
         self.assertTrue(title_ink(large, normal))
@@ -251,8 +251,35 @@ class HiddenTitleTest(unittest.TestCase):
         self.assertTrue(near(wide.getpixel((left + 30, 8)), (255, 255, 255)))
         self.assertFalse(near(narrow.getpixel((left + 30, 8)), (255, 255, 255)))
 
+    def test_alert_hides_the_logo_and_the_time_and_uses_the_whole_row(self):
+        # 2026-11-02、異常のときは、名前だけでなく左のロゴと右上の時刻も出さず、見出しの行をまるごと使う（ユーザーの指示）
+        with tempfile.NamedTemporaryFile(suffix=".png", delete=False) as f:
+            Image.new("RGBA", (40, 40), (0, 255, 0, 255)).save(f, format="PNG")
+        self.addCleanup(Path(f.name).unlink)
+        large = config(title="example.com", large_alerts=True, logo=f.name)
+        inset, logo = ms.LANDSCAPE.inset, (ms.LANDSCAPE.inset + ICON_SIZE // 2, round(25 - ms.LOGO_RISE))
+        # 赤の画面: 白い帯が左右の余白の内側いっぱいに広がり、ロゴも時刻も無い
+        red = status(values=(92, 61, 47, 3))
+        image = ms.render(red, sm.assess(red, large, NOW), large)
+        self.assertTrue(near(image.getpixel((inset + 30, 8)), (255, 255, 255)))
+        self.assertTrue(near(image.getpixel((480 - inset - 30, 8)), (255, 255, 255)))
+        self.assertFalse(near(image.getpixel(logo), (0, 255, 0)))
+        # オレンジの注意: ロゴの緑も、時刻の白い字も無い
+        warned = status(incidents=(sm.Incident("job", "nightly-backup", "直近の実行が失敗", None),))
+        image = ms.render(warned, sm.assess(warned, large, NOW), large)
+        self.assertFalse(near(image.getpixel(logo), (0, 255, 0)))
+        stamp = [image.getpixel((x, y)) for x in range(380, 460) for y in range(8, 30)]
+        self.assertFalse(any(min(p) > 200 for p in stamp))
+        # 異常が無いときは、ロゴと時刻を出す
+        image = ms.render(status(), sm.assess(status(), large, NOW), large)
+        self.assertTrue(near(image.getpixel(logo), (0, 255, 0)))
+        stamp = [image.getpixel((x, y)) for x in range(380, 460) for y in range(8, 30)]
+        self.assertTrue(any(min(p) > 200 for p in stamp))
+
     def test_warning_is_drawn_larger_on_two_lines(self):
-        incidents = (sm.Incident("job", "nightly-backup", "直近の実行が失敗", None),)
+        # 見出しの行をまるごと使う（2026-11-02）と 1 行に収まる文言が増えたので、2 行になる長い理由で確かめる
+        incidents = (sm.Incident("job", "nightly-backup", "直近の実行が失敗し、続けて行った再実行も同じ理由で失敗した",
+                                 None),)
         st = status(incidents=incidents)
         large = config(title="example.com", large_alerts=True)
         image = ms.render(st, sm.assess(st, large, NOW), large)

@@ -447,6 +447,19 @@ scripts/uninstall-launch-agent.sh                                 # 自動起動
 - 確かめたこと: 値を足す前に、既定のまま描いた 3 画面が直す前と 1 ピクセルも違わないこと。3.5 インチの実装が見本の案 B と 1 ピクセルも違わないこと。テストは 192 件すべて通過（足したのは `test_number_is_larger_without_percent_sign`・`test_landscape_detail_is_white_and_the_number_has_no_percent_sign`。`test_remaining_time_is_written_like_the_reset_caption` は `test_remaining_time_is_white_and_larger` に書き直した）
 - README の画像: 5.2 インチの 2 枚（`gauge-1280x720`・`gauge-gemini-1280x720`。10-15 08:58・08:34）と、3.5 インチの横置きの 5 枚を、前と同じ時刻で描き直した。いまのコードで描くと前の画像と 1 ピクセルも違わないことを先に確かめ、3.5 インチは見出しが変わらないことも確かめた
 
+### 4-23. 5.2 インチにサーバーの状態、3.5 インチに Claude の週次を出す見本（2026-11-02）
+
+- **ユーザーの指示**: 「claude ultra にアップグレードしたのでそのうち 5 時間制限はなくなるはず。なので、5 インチモニターには（サービス名）の状態、3.5 インチモニターには claude の週次を表示させたい。実行はまだ実施せず、画像作成して欲しい」（サービス名はここに書かない）
+- **Ultra の 5 時間の制限**（同日に調べた）: 公式の記事「What is the Ultra plan?」（https://support.claude.com/en/articles/17728952-what-is-the-ultra-plan ）は、"Verified Ultra accounts don't have a five-hour limit."・"If your account isn't verified yet, a temporary limit applies." とし、検証はアカウントと支払いの履歴で自動で行われ、Settings > Usage に Current session の欄が無ければ検証済み、と書く。検証にかかる日数は書かれていない。Max 20x は Ultra に名前が変わった。18:26 に利用枠の API を呼ぶと、`kind: "session"`（16%、`is_active: true`）が返った。Keychain のログイン情報の `rateLimitTier` は、10-05 の記録の `default_claude_max_5x` から `default_claude_max_20x` に変わっていた（同日 18:19 に更新）。検証が済んだ後に API が 5 時間の枠をどう返すかは、公式の文書に無く、まだ起きていない
+- **ユーザーが選んだこと**
+  - 5.2 インチ: 案 1（3.5 インチの横置きと同じ 2×2 を、高さの比 2.25 倍で 1280×720 に広げる）。横 1 列に 4 つ並べる案 2 は選ばれなかった。**エラーのときは、左のロゴと右の更新時刻も出さず、見出しの 1 行をまるごと使う。この Mac の状態の画面も同じ**
+  - 3.5 インチ: 案 A（いまの利用枠の画面から 5 時間を外し、週次と Fable 週次の 2 列。中身は 1.2 倍、数字 36 pt 相当で % なし。カードの面は描かず区切り線）。リングを左に置いて上下 2 段にする案 B は選ばれなかった
+- **入れたこと**（いまの画面を変えないことを確かめた）
+  - `monitor_screen._Layout.k`: 配置を 3.5 インチの寸法で書き、描くときに座標と字の大きさを k 倍する（`_Shapes` は k が 1 でないとき拡大して描く倍率を下げる）。`render` に `layout` を渡せる。k が 1 のまま、サーバーの状態・この Mac の状態の 66 通り（設定 2 種・ロゴの有無・大きな文言の有無・正常/異常/ジョブ/取得の失敗・横置き/縦置き）が書き換えの前と 1 ピクセルも違わない
+  - `gauge.Layout.columns`（既定 3）と `gauge.render` の `layout`。利用枠の画面 26 通り（3.5・5.2 インチ、アイコンの有無、取得の失敗、Gemini の枠、横棒の画面）が HEAD のコードと 1 ピクセルも違わない
+  - **エラーの見出し**（`large_alerts`）: 名前だけを消していた（§4-18）のを、ロゴ・名前・右上の時刻を出さず、帯を左右の余白の内側いっぱいに広げる形にした。テスト `test_alert_hides_the_logo_and_the_time_and_uses_the_whole_row` を足し、行が広がって 1 行に収まるようになった文言に合わせて 2 件を直した（193 件すべて通過）。取得に失敗したときの「…時点」も出なくなることは、ユーザーに伝えた
+- **まだ入れていないこと**（ユーザーが見本を見て決めるのを待っている）: 5.2 インチの配置（見本では、左右の列の区画を 20 右へ寄せ、帯を中央の幅 248 にした）を `monitor_screen` に置き、`monitor` の常駐が 1280×720 のディスプレイではその配置で描くようにする。`run` に週次だけを出す設定を足す。この Mac の状態の画面で `large_alerts` を使う。2 台の常駐を登録し直す（5.2 インチ: `--monitor --device 5.2`、3.5 インチ `0x00120000`: 週次）
+
 ## 5. 残っている作業（上から順に）
 
 1〜5 は 2026-10-05 に終えた（README.md、CLAUDE.md、requirements.txt と .gitignore、自動起動の作成と登録、git の初期化と push）。

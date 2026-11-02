@@ -103,6 +103,7 @@ class Layout:
     percent_sign: bool = True  # 数字の右に小さく % を出すか
     remain_pt: float = CAPTION1  # quiet_remain のときの残り時間の大きさ（3.5 インチの pt。content を掛ける）
     remain_color: tuple[int, int, int] = SECONDARY  # quiet_remain のときの残り時間の色
+    columns: int = 3  # 横に並べる枠の数
 
     @property
     def k(self) -> float:
@@ -133,7 +134,7 @@ class Layout:
 
     @property
     def card_width(self) -> float:
-        return (self.width - self.px(MARGIN) * 2 - self.px(CARD_GAP) * 2) / 3
+        return (self.width - self.px(MARGIN) * 2 - self.px(CARD_GAP) * (self.columns - 1)) / self.columns
 
 
 # 大きい画面での調整（高さの比の拡大に加える）。3.5 インチ（480×320）は変えない
@@ -245,7 +246,7 @@ def card_box(index: int, layout: Layout = Layout()) -> tuple[float, float, float
 def dividers(layout: Layout) -> list[tuple[float, float, float, float]]:
     """カードを描かないときの縦の区切り線（カードの間の中央、カードと同じ高さ）。"""
     lines = []
-    for index in range(2):
+    for index in range(layout.columns - 1):
         _left, top, right, bottom = card_box(index, layout)
         x = (right + card_box(index + 1, layout)[0]) / 2
         lines.append((x, top, x, bottom))
@@ -376,15 +377,18 @@ def _header(image: Image.Image, draw: ImageDraw.ImageDraw, layout: Layout, basel
 
 def render(snapshot: Snapshot | None, now: datetime, status: str | None = None,
            labels: tuple[str, ...] = ("5時間", "週次", "Fable週次"),
-           size: tuple[int, int] = (WIDTH, HEIGHT), icons: dict[str, Image.Image] | None = None) -> Image.Image:
+           size: tuple[int, int] = (WIDTH, HEIGHT), icons: dict[str, Image.Image] | None = None,
+           layout: Layout | None = None) -> Image.Image:
     """``status`` は取得に失敗したときの短い説明。前回の値を残したまま、見出しの位置に出す。
 
     ``icons`` は ``load_icons`` の結果。``claude`` があれば見出しの名前の左に出す。
+    ``layout`` を渡すと、``size`` から決める配置の代わりに使う（``labels`` と枠の数は ``columns`` にそろえる）。
     """
-    layout = layout_for(size)
+    layout = layout or layout_for(size)
     px, cpx, cpt = layout.px, layout.cpx, layout.cpt
     width = layout.width
-    meters = snapshot.meters[:3] if snapshot else tuple(Meter(label, None, None) for label in labels)
+    meters = (snapshot.meters[:layout.columns] if snapshot
+              else tuple(Meter(label, None, None) for label in labels[:layout.columns]))
     label_y, ring_y, caption_y, when_y, remain_y, _content_height = content_rows(layout)
 
     shapes = _Shapes(layout)
