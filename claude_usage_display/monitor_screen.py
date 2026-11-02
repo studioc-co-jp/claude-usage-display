@@ -129,13 +129,15 @@ def _px(value: float) -> float:
 
 LANDSCAPE_LARGE = replace(
     LANDSCAPE, size=(_W_LARGE, 320), k=_K_LARGE, pill=(round(_W_LARGE / 2 - 124), 4, round(_W_LARGE / 2 + 124), 34),
+    # 「サイト」の小見出しを消し、「直近 24 時間」を左端にそろえ、縦の間を詰めた分でリングを外径 172→200 px・
+    # 数字 61→70 px にした（同日、ユーザーの指示）
     cells=tuple((_px(190 + 300 * i), 0) for i in range(4)),  # リングの中心の x（区画は幅 300 px で 4 つ）
-    ring=(0, _px(238), _px(86), _px(20)), label=(0, _px(366), "ms", 14), number=(0, _px(259), 27, 0, True),
-    threshold=(0, _px(396), "ms", 11), dividers=((_px(40), _px(418), _px(1240), _px(418)),),
-    headings=((_px(60), _px(122), "サーバー", 12, 6, "ls"), (_px(60), _px(456), "サイト", 12, 6, "ls"),
-              (_px(330), _px(456), "直近 24 時間（1 時間ごと）", 10, SMALL_WEIGHT, "ls")),
-    counter_rows=_CounterRows(top=_px(476), height=_px(112), left=_px(60), right=_px(1220), baseline=_px(70),
-                              spark=(_px(330), _px(560), _px(52), _px(78)), label_size=15, number_size=22,
+    ring=(0, _px(240), _px(100), _px(22)), label=(0, _px(380), "ms", 14), number=(0, _px(265), 31, 0, True),
+    threshold=(0, _px(410), "ms", 11), dividers=((_px(40), _px(430), _px(1240), _px(430)),),
+    headings=((_px(60), _px(122), "サーバー", 12, 6, "ls"),
+              (_px(60), _px(466), "直近 24 時間（1 時間ごと）", 10, SMALL_WEIGHT, "ls")),
+    counter_rows=_CounterRows(top=_px(478), height=_px(108), left=_px(60), right=_px(1220), baseline=_px(68),
+                              spark=(_px(330), _px(560), _px(52), _px(76)), label_size=15, number_size=22,
                               unit_size=12))
 
 
