@@ -481,7 +481,13 @@ scripts/uninstall-launch-agent.sh                                 # 自動起動
 - **見本**: 案 1（StandBy 型。リングを外径 410 px にし、数字と「あと…」をリングの中へ）・案 2（上下 2 段の太い横棒と、枠の時間の経過の白い目印）を描き、いまの 3 列・2 列と合わせて 4 つを、実機の 5.2 インチで 10 秒ずつ順に見せた（利用枠の常駐を `launchctl bootout` で止め、終わったら同じ plist で登録し直す使い捨てのスクリプト）。案 2 を推した理由（新しい情報＝使う速さを足せる、同じ物差しで比べられる＝Cleveland & McGill "Graphical Perception" 1984、横長を使い切る）と、弱い点（3.5 インチのリングの画面とそろわない、目印の意味を覚える必要がある）を伝えた
 - **ユーザーが決めたこと**: 案 2。大きい数字の右に % を小さく（数字 140 px に対して 50 px。70 px の見本を見て「もう少し小さく」）。下の行は、リセットを左寄せ、「あと…」を右寄せ。「時間の経過 N%」は名前の右に「経過 N%」として出す（3 択から推奨を選んだ）
 - **入れたこと**: `claude_usage_display/pace.py`（`--theme pace`）。寸法は 1280×720 のピクセルで持ち、ほかの大きさでは高さの比で縮める。見出し（取得の失敗・5 時間の枠が無いときの注意を含む）はゲージ型の画面の部品をそのまま使う。経過の割合は、リセットの時刻から枠の長さ（5 時間・7 日。API の `five_hour`・`seven_day` の名前どおり）を引いて枠の始まりを求めて出す（`pace.elapsed`）。値もリセットの時刻も無い段は、灰色の地と「--」だけで、目印を出さない。テストは `tests/test_pace.py`。README に説明と見本の画像（`docs/images/pace-1280x720.png`、アイコンなし）を足した
-- 5.2 インチの常駐を `scripts/install-launch-agent.sh --device 5.2 --brightness 40 --icons "$HOME/Library/Application Support/claude-usage-display/icons" --theme pace` で登録し直した
+- 5.2 インチの常駐を `scripts/install-launch-agent.sh --device 5.2 --brightness 40 --icons "$HOME/Library/Application Support/claude-usage-display/icons" --theme pace` で登録し直した。続けて、下の残り時間の字を W3 から W6 にし、リセットと大きさ・太さをそろえた（ユーザーの指摘「フォントサイズ違うなら揃えて」。どちらも 36 px だったが、細い W3 が小さく見えた）
+
+### 4-25. 5.2 インチにサーバーの状態、3.5 インチに利用枠を出すよう入れ替えた（2026-11-03）
+
+- **経緯**: ユーザーが「（サービス名）・claude・mac mini の 3 つを表示させてるけど一番大切なのは（サービス名）のモニターだよね？」と聞いた（サービス名はここに書かない）。止まったときに困る人（サービスの利用者と会社か、自分の作業だけか）と、ほかに気づく手段（監視の通知・Claude Code の表示・使っていて分かる）で比べ、サーバーの状態が最も大切と答えた。その画面がいちばん小さい 3.5 インチにあるので、Ultra の 5 時間の制限が外れるのを待たずに入れ替えるかを聞き、ユーザーが「いま入れ替える」を選んだ（見本は、5.2 インチのサーバーの状態の案 1 と、`pace` を 3.5 インチの大きさにしたもの）
+- **入れたこと**: `monitor_screen.LANDSCAPE_LARGE`（§4-23 の案 1 と同じ値）と `monitor_screen.layout_for`。`monitor` の常駐は、開いたディスプレイが 1280×720 ならこの配置で描く。`monitor --preview --device 5.2` もこの大きさで描く。`monitor --device 5.2 --portrait` は引数の解析で止める（縦置きの配置は 3.5 インチだけ）。テストは `test_large_layout_is_the_landscape_scaled_to_the_52_inch_display`・`test_draws_the_large_layout_on_the_52_inch_display`・`test_portrait_is_only_for_the_35_inch_display`。README に見本（`docs/images/monitor-1280x720.png`、架空の設定）を足した
+- **登録**: 5.2 インチは `scripts/install-launch-agent.sh --monitor --device 5.2 --brightness 40`（明るさは、それまでの 5.2 インチと同じ）。3.5 インチの 1 台目は `scripts/install-launch-agent.sh --device 3.5 --location 0x00120000 --brightness 25 --icons "$HOME/Library/Application Support/claude-usage-display/icons" --theme pace`（明るさは、それまでのこの 3.5 インチと同じ）。2 台目（この Mac の状態）は変えていない
 
 ## 5. 残っている作業（上から順に）
 
@@ -597,6 +603,7 @@ scripts/uninstall-launch-agent.sh                                 # 自動起動
     4. 実機の画面をユーザーに見てもらう（見出しの「バックアップ …」、CPU の 2 行目、ログ `~/Library/Logs/claude-usage-display-local.log`）
 
 12. **5.2 インチにサーバーの状態、3.5 インチ（`0x00120000`）に Claude の週次を出す**（ユーザーが後回しを決めた。2026-11-02）
+    **2026-11-03 に終えた（§4-25）。**ユーザーが「一番大切なのはサーバーの状態のモニター」として、5 時間の制限が外れるのを待たずに入れ替えると決めた。3.5 インチは、週次 2 列の案 A ではなく、5.2 インチ向けに決めた `pace`（5時間と週次の横棒）を縮めて出す。下の項目は、入れ替えを見送ったときの記録
     - 見本はユーザーが了承した（§4-23）。作業の中身は §4-23 の「入れ替えの作業」
     - 見本の 3.5 インチは「週次」と「Fable 週次」の 2 列だった。2026-11-03 にユーザーが「fable はそもそも使っていない」と伝えたので、入れ替えるときは、3.5 インチに出す項目（週次だけにするか）と形（5.2 インチの `pace` の画面を 3.5 インチに合わせるか）をユーザーに確かめる
     - **再開のきっかけ**: Ultra のアカウントの検証が済み、5 時間の制限が外れたとき。claude.ai の Settings > Usage に Current session の欄が出なくなる（公式の記事「What is the Ultra plan?」）。利用枠の API で `kind: "session"` がどう変わるか（消えるか、`is_active` などが変わるか）も、そのときに確かめる

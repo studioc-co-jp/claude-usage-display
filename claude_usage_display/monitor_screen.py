@@ -17,7 +17,7 @@
 from __future__ import annotations
 
 import math
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from functools import lru_cache
 
 from PIL import Image, ImageDraw
@@ -93,6 +93,24 @@ PORTRAIT = _Layout(
     # リングの半径 46→56・太さ 10→12、数字 30→34）
     cells=((0, 80), (160, 80), (0, 280), (160, 280)), ring=(80, 100, 56, 12), label=(80, 28, "ms", 18),
     number=(80, 112, 34, 16, True), threshold=(80, 184, "ms", 14), dividers=((160, 92, 160, 466), (16, 280, 304, 280)))
+
+# 5.2 インチ（1280×720）。横置きの 2×2 を、高さの比 2.25 倍で描く（2026-11-02 にユーザーが見本で選んだ「案 1」を、
+# 2026-11-03 に入れた。docs/handover.md §4-23・§4-25）。3.5 インチの寸法での横幅は 1280 ÷ 2.25 ≒ 569 になるので、
+# 区切り線を中央に置き、区画の中身を 20 右へ寄せて左右の余白をそろえる。帯は横置きと同じ幅 248 で中央に置く
+_K_LARGE = 720 / 320
+_W_LARGE = 1280 / _K_LARGE
+_MID_LARGE = 20 + (_W_LARGE - 40) / 2
+LANDSCAPE_LARGE = replace(
+    LANDSCAPE, size=(_W_LARGE, 320), k=_K_LARGE, pill=(round(_W_LARGE / 2 - 124), 4, round(_W_LARGE / 2 + 124), 34),
+    cells=((40, 44), (_MID_LARGE + 30, 44), (40, 182), (_MID_LARGE + 30, 182)),
+    dividers=((_MID_LARGE, 56, _MID_LARGE, 304), (20, 182, _W_LARGE - 20, 182)))
+
+
+def layout_for(size: tuple[int, int], portrait: bool = False) -> _Layout:
+    """ディスプレイの大きさ（ピクセル）に合う配置。1280×720 は 5.2 インチの横置き、それ以外は 3.5 インチ。"""
+    if tuple(size) == (1280, 720):
+        return LANDSCAPE_LARGE
+    return PORTRAIT if portrait else LANDSCAPE
 
 
 class _Shapes:

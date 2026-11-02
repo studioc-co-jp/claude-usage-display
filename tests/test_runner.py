@@ -291,6 +291,22 @@ class TurzxRunnerTest(unittest.TestCase):
 
 
 class MonitorRunnerTest(unittest.TestCase):
+    def test_draws_the_large_layout_on_the_52_inch_display(self):
+        # 2026-11-03、サーバーの状態を 5.2 インチに移した。1280×720 のディスプレイには 2.25 倍の 2×2 を描く
+        from tests.test_server_monitor import config, status
+
+        runner = cli.MonitorRunner(argparse.Namespace(flip=False, device="5.2", brightness=40, interval=0,
+                                                      portrait=False), config(), reader=mock.Mock())
+        runner.status = status()
+        runner.display = mock.Mock(width=1280, height=720)
+        self.assertEqual(runner._render().size, (1280, 720))
+        runner.display = mock.Mock(width=480, height=320)
+        self.assertEqual(runner._render().size, (480, 320))
+
+    def test_portrait_is_only_for_the_35_inch_display(self):
+        with self.assertRaises(SystemExit), mock.patch("sys.stderr"):
+            cli.main(["monitor", "--device", "5.2", "--portrait", "--preview", "x.png"])
+
     def test_sends_changes_and_logs_alerts_and_recovery(self):
         from tests.test_server_monitor import config, status
 
@@ -302,6 +318,8 @@ class MonitorRunnerTest(unittest.TestCase):
         shown = []
 
         class Display:
+            width, height = 480, 320  # 3.5 インチ（本物の TuringRevA と同じく大きさを持つ）
+
             def initialize(self, brightness):
                 pass
 

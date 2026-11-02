@@ -72,6 +72,23 @@ class MonitorScreenTest(unittest.TestCase):
         _, _, radius, width = ms.LANDSCAPE.ring
         self.assertLess(ms.rounded(number_size).getlength("100"), 2 * (radius - width) - 6)  # 「100」もリングの内側に収まる
 
+    def test_large_layout_is_the_landscape_scaled_to_the_52_inch_display(self):
+        # 2026-11-03、5.2 インチ（1280×720）に、横置きの 2×2 を 2.25 倍で描く（ユーザーが見本で選んだ案 1）
+        large = ms.LANDSCAPE_LARGE
+        self.assertIs(ms.layout_for((1280, 720)), large)
+        self.assertIs(ms.layout_for((480, 320)), ms.LANDSCAPE)
+        self.assertIs(ms.layout_for((320, 480), portrait=True), ms.PORTRAIT)
+        image = self.render(status())
+        big = ms.render(status(), sm.assess(status(), config(), NOW), config(), layout=large)
+        self.assertEqual((image.size, big.size), ((480, 320), (1280, 720)))
+        # しきい値（15 ピクセル）の右端は、左の列は中央の区切り線の手前、右の列は右の余白の内側
+        threshold_x, _, _, size = large.threshold
+        width = font(size, SMALL_WEIGHT).getlength("しきい値 85%")
+        divider = large.dividers[0][0]
+        self.assertLess(large.cells[0][0] + threshold_x + width, divider)
+        self.assertLess(large.cells[1][0] + threshold_x + width, large.size[0] - large.inset)
+        self.assertGreater(large.cells[1][0] + large.ring[0] - large.ring[2], divider)  # 右の列のリングは区切り線の右
+
     def test_landscape_long_labels_fit_their_cells(self):
         # 2026-10-27 に名前を 18→22 ピクセルにした。左の列の名前は区切り線の手前、右の列の名前は
         # その下の「しきい値 90%」より右へ出ない

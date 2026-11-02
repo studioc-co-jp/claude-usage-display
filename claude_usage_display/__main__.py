@@ -621,8 +621,9 @@ class MonitorRunner(_Resident):
         return 0
 
     def _render(self) -> Image.Image:
-        return monitor_screen.render(self.status, self.assessment, self.config, self.error,
-                                     portrait=self.args.portrait)
+        # 5.2 インチ（1280×720）は、横置きの 2×2 を 2.25 倍で描く（2026-11-03）
+        layout = monitor_screen.layout_for((self.display.width, self.display.height), self.args.portrait)
+        return monitor_screen.render(self.status, self.assessment, self.config, self.error, layout=layout)
 
 
 class LocalRunner(MonitorRunner):
@@ -738,7 +739,9 @@ def cmd_monitor(args) -> int:
                 status, error = None, e.message
                 print(f"取得に失敗しました: {e.message}", file=sys.stderr)
         assessment = assess(status, config, now) if status else None
-        monitor_screen.render(status, assessment, config, error, portrait=args.portrait).save(args.preview)
+        size = (1280, 720) if args.device == "5.2" else (480, 320)  # --device 5.2 なら 5.2 インチの大きさで描く
+        layout = monitor_screen.layout_for(size, args.portrait)
+        monitor_screen.render(status, assessment, config, error, layout=layout).save(args.preview)
         print(args.preview)
         return 0
     runner = MonitorRunner(args, config)
@@ -837,6 +840,8 @@ def main(argv: list[str] | None = None) -> int:
         parser.error(f"{args.command} の --demo は --preview と一緒に使ってください")
     if getattr(args, "location", None) is not None and getattr(args, "device", "3.5") == "5.2":
         parser.error("--location は 3.5 インチを選ぶためのものです（--device 5.2 とは一緒に使えません）")
+    if args.command == "monitor" and args.portrait and args.device == "5.2":
+        parser.error("サーバーの状態の画面の縦置きは 3.5 インチだけです（--device 5.2 とは一緒に使えません）")
     if not 0 <= getattr(args, "away_minutes", 0) <= 1440:
         parser.error("--away-minutes は 0〜1440 にしてください")
     # 範囲外の値は接続した時点で初めて失敗し、run が初期化を繰り返し続けるため、ここで止める
