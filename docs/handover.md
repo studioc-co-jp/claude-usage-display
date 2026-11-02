@@ -470,6 +470,19 @@ scripts/uninstall-launch-agent.sh                                 # 自動起動
   - `run` に週次だけを出す設定を足す（見本は `gauge.Layout(480, 320, columns=2, cards=False, number=36, percent_sign=False, content=1.2)` に、週次と Fable 週次の 2 つを渡した）
   - 2 台の常駐を登録し直す（5.2 インチ: `--monitor --device 5.2`、3.5 インチ `0x00120000`: 週次）
 
+### 4-24. 5.2 インチを「5時間」と「週次」の 2 つにし、経過の目印つきの横棒の画面にした（2026-11-03）
+
+- **ユーザーの指示**: 「5 インチモニターで 5 時間・週次の表示だけにしたい。fable はそもそも使っていないので。まずは画像作ってみて」。いまの形を 2 列にしただけの見本では、リングは大きくならない（リングの大きさは画面の高さで決まり、外径 310 px のまま。縦は下の余白 27 px まで使っている）と伝えた。続けて「apple のデザインパターンを参考に画面作っているけど、5 時間、週次の 2 項目でもっといい見せ方はない？」
+- **調べた Apple の指針**（HIG の本文は JavaScript で描かれるので、`https://developer.apple.com/tutorials/data/design/human-interface-guidelines/<ページ>.json` を取得して読んだ）
+  - Widgets「StandBy and CarPlay」: iPhone の StandBy は小さいウィジェット 2 つを左右に並べて拡大し、「離れた所から読めるよう、文字を大きくして並べ替える」
+  - Widgets「Best practices」: "Avoid expanding a smaller widget's content to simply fill a larger area."・"In larger widgets, you can display more data — or more detailed visualizations of the data"
+  - Gauges「Anatomy」: 円形か直線の道筋に値を対応させ、容量の形は値の位置まで塗る
+  - Activity rings「Best practices」: "Don't replicate or modify Activity rings for other purposes. Never use Activity rings to display other types of data." → 同心円の 2 重リングの案は作らなかった
+- **見本**: 案 1（StandBy 型。リングを外径 410 px にし、数字と「あと…」をリングの中へ）・案 2（上下 2 段の太い横棒と、枠の時間の経過の白い目印）を描き、いまの 3 列・2 列と合わせて 4 つを、実機の 5.2 インチで 10 秒ずつ順に見せた（利用枠の常駐を `launchctl bootout` で止め、終わったら同じ plist で登録し直す使い捨てのスクリプト）。案 2 を推した理由（新しい情報＝使う速さを足せる、同じ物差しで比べられる＝Cleveland & McGill "Graphical Perception" 1984、横長を使い切る）と、弱い点（3.5 インチのリングの画面とそろわない、目印の意味を覚える必要がある）を伝えた
+- **ユーザーが決めたこと**: 案 2。大きい数字の右に % を小さく（数字 140 px に対して 50 px。70 px の見本を見て「もう少し小さく」）。下の行は、リセットを左寄せ、「あと…」を右寄せ。「時間の経過 N%」は名前の右に「経過 N%」として出す（3 択から推奨を選んだ）
+- **入れたこと**: `claude_usage_display/pace.py`（`--theme pace`）。寸法は 1280×720 のピクセルで持ち、ほかの大きさでは高さの比で縮める。見出し（取得の失敗・5 時間の枠が無いときの注意を含む）はゲージ型の画面の部品をそのまま使う。経過の割合は、リセットの時刻から枠の長さ（5 時間・7 日。API の `five_hour`・`seven_day` の名前どおり）を引いて枠の始まりを求めて出す（`pace.elapsed`）。値もリセットの時刻も無い段は、灰色の地と「--」だけで、目印を出さない。テストは `tests/test_pace.py`。README に説明と見本の画像（`docs/images/pace-1280x720.png`、アイコンなし）を足した
+- 5.2 インチの常駐を `scripts/install-launch-agent.sh --device 5.2 --brightness 40 --icons "$HOME/Library/Application Support/claude-usage-display/icons" --theme pace` で登録し直した
+
 ## 5. 残っている作業（上から順に）
 
 1〜5 は 2026-10-05 に終えた（README.md、CLAUDE.md、requirements.txt と .gitignore、自動起動の作成と登録、git の初期化と push）。
@@ -542,7 +555,7 @@ scripts/uninstall-launch-agent.sh                                 # 自動起動
 7. **実機で分かったことを書き残す**: 確保の可否、向き、色、明るさ、転送時間、ゲージ型の見え方、写真を、`docs/article-material.md` §10 に書く。作業の判断に関わること（エラーと対処など）は、この文書の §4 にも追記する
 8. **公開と記事**（2026-10-09 済み）: 認証の扱いは「今の方式のまま公開し、README と記事に規約上の位置づけを明記する」とユーザーが決めた。README に規約上の位置づけを書き（`0e10883`）、§6 の確認（履歴にトークン・個人のアドレス・IP・API の生の応答が無いこと）をしてから public にし、記事を公開した（https://studioc.co.jp/tech/claude-code-usage-on-mac-usb-display/ 、タイトル「Claude Codeの利用枠を3.5インチ外部モニターに出力した」、studioc の `0abfec0`）。記事はユーザーの指示で、このリポジトリで起動したセッションが studioc の `.claude/skills/techblog-write/SKILL.md` と `docs/tech_blog_writing_guide.md` を読んで同じ手順で書いた。公開日はユーザーの指示で当日（金曜。火曜・木曜の枠の外）。X への告知はユーザーが手動で行う（定時の `x-announce.yml` は朝 7:00 に当日分だけを告知するので、この記事は自動では告知されない）。当初の手順は次のとおり: §6 の「認証の扱い」を決める → 必要なら実装を直す → README に、規約上の位置づけと、公式に説明されていない API を使っていることを明記する（2026-10-09 ユーザーが決定。`docs/article-material.md` §12 の 10）→ リポジトリを public にする → `~/projects/studioc` で起動したセッションが `/techblog-write` で記事を書く（素材は `docs/article-material.md`）
 9. **5.2 インチのディスプレイ**（**2026-10-09 12:40 ごろ、ユーザーが注文した**。AliExpress 1005010058380485、TURZX 5.2" 1280×720、Option 1-Black、5,541 円（9%OFF）、配達予定 10 月 17〜21 日。付属品の画像に USB-A と USB-C の端子が付いたケーブルがあるので、USB ハブの USB-A 端子につなぐ。届くのが再開の条件）。当初は 5 インチ（rev C、1005011742654881）を検討したが、macOS で動かす関門が少ない新しい世代の 5.2 インチに替えた（§4-9）。到着から 90 日以内なら返送料なしで返品できる（§4-9）
-   **2026-10-15 に届き、1・2 を終えた（§4-11）。いまの登録は `scripts/install-launch-agent.sh --device 5.2 --brightness 40 --icons "$HOME/Library/Application Support/claude-usage-display/icons"`（見出しに Claude Code のキャラクター。§4-11）。返品はしない（通信できたため）。記事は 2026-10-15 に公開した（https://studioc.co.jp/tech/claude-code-usage-on-52-inch-usb-display/ 。`docs/article-material.md` §13）**
+   **2026-10-15 に届き、1・2 を終えた（§4-11）。いまの登録は `scripts/install-launch-agent.sh --device 5.2 --brightness 40 --icons "$HOME/Library/Application Support/claude-usage-display/icons" --theme pace`（見出しに Claude Code のキャラクター。§4-11。2026-11-03 から 5時間と週次の 2 つの横棒の画面。§4-24）。返品はしない（通信できたため）。記事は 2026-10-15 に公開した（https://studioc.co.jp/tech/claude-code-usage-on-52-inch-usb-display/ 。`docs/article-material.md` §13）**
    1. **届いたら最初に、Mac で通信できるかを確かめる**（返品の判断はここで決まる）。送信部（`turzx_usb.py`）は 2026-10-09 に先に書いた。見出しのバイト列は phstudy の実装と一致することをテストで固定してある（`tests/test_turzx_usb.py`）
       1. 自動起動を止める（`scripts/uninstall-launch-agent.sh`）。3.5 インチは外す（両方つながっていると 5.2 インチを使うが、確かめる間は 1 台にする）
       2. USB-A のハブにつなぎ、`.venv/bin/python -m claude_usage_display probe`。`1cbe:0050 TURZX 5.2 インチ` と出て、「インターフェースを確保できました」で終われば次へ。別の ID なら、中身の世代が違う個体（§4-9 の #727）。一覧の出力をそのまま記録する
@@ -585,6 +598,7 @@ scripts/uninstall-launch-agent.sh                                 # 自動起動
 
 12. **5.2 インチにサーバーの状態、3.5 インチ（`0x00120000`）に Claude の週次を出す**（ユーザーが後回しを決めた。2026-11-02）
     - 見本はユーザーが了承した（§4-23）。作業の中身は §4-23 の「入れ替えの作業」
+    - 見本の 3.5 インチは「週次」と「Fable 週次」の 2 列だった。2026-11-03 にユーザーが「fable はそもそも使っていない」と伝えたので、入れ替えるときは、3.5 インチに出す項目（週次だけにするか）と形（5.2 インチの `pace` の画面を 3.5 インチに合わせるか）をユーザーに確かめる
     - **再開のきっかけ**: Ultra のアカウントの検証が済み、5 時間の制限が外れたとき。claude.ai の Settings > Usage に Current session の欄が出なくなる（公式の記事「What is the Ultra plan?」）。利用枠の API で `kind: "session"` がどう変わるか（消えるか、`is_active` などが変わるか）も、そのときに確かめる
     - **気づくための仕組み**（2026-11-02、ユーザーの指示「5 インチで 5 時間制限が API で取得できなくなったらエラー扱いにすることはできる？」。見本で了承）: `limits` があるときは、5 時間の枠を `limits` だけで決める（古い `five_hour` が残っていても使わない。`usage.parse_usage`）。`limits` に `session` が無いか使用率が空なら、利用枠の常駐が見出しに、取得の失敗と同じオレンジで「5時間の枠がなくなりました」を出す（`__main__.NO_SESSION`。取得の失敗があればそちらを先に出す）。「5時間」のリングは灰色の「--」になる。ログには、最初に気づいたときに警告「5 時間の枠が利用枠の API の応答にありません…」を 1 度、戻ったら「…戻りました」を残す。`limits` の枠の種類と `is_active`（`usage.describe_limits`）は、起動して最初に取れたときと、変わったときに「利用枠の API の枠: …」として記録する
     - **この仕組みで気づけない場合**: 制限が外れた後も、`session` が数字の入った形で返り続けるとき（API の形は公式に説明されていない）。そのときも、枠の種類か `is_active` が変われば「利用枠の API の枠: …」の記録で分かる。公式に確かめる方法は Settings > Usage
