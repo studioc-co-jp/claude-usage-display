@@ -34,7 +34,7 @@ from .antigravity import LABELS as GEMINI_LABELS
 from .antigravity import AntigravityError, AntigravityReader
 from .presence import DEFAULT_AWAY_MINUTES, POLL_SECONDS, Presence
 from .render import render_test_pattern
-from .server_monitor import (Assessment, AwsReader, ConfigError, FetchError, Incident, MetricValue, MonitorConfig,
+from .server_monitor import (Assessment, AwsReader, ConfigError, CounterValue, FetchError, Incident, MetricValue, MonitorConfig,
                              MonitorState, ServerStatus, acknowledge_line, assess, ended_acknowledgements,
                              load_config)
 from .turing import PID, VID, DeviceNotFound, TuringRevA, UsbTransport, is_disconnected, location_id
@@ -515,7 +515,10 @@ def _demo_server_status(config, now: datetime, case: str) -> ServerStatus:
     # しきい値以上の値は、アラームと同じ回数（datapoints）続いているものとして描く
     metrics = tuple(MetricValue(spec, value, now - timedelta(minutes=1), spec.datapoints if value >= spec.threshold else 0)
                     for spec, value in zip(config.metrics, values))
-    return ServerStatus(metrics, MonitorState(incidents, now - timedelta(seconds=30)), now)
+    # 件数は、1 つ目に 8 時間前と 3 時間前の少しの件数（警報の条件には届かない）、ほかは 0 件
+    counters = tuple(CounterValue(spec, tuple(float(index == 0 and hour in (15, 20)) for hour in range(24)),
+                                  (False,) * 24, 0.0) for index, spec in enumerate(config.counters))
+    return ServerStatus(metrics, MonitorState(incidents, now - timedelta(seconds=30)), now, counters)
 
 
 class MonitorRunner(_Resident):

@@ -64,3 +64,19 @@ name = "swap_used_percent"
 threshold = 90
 period = 300
 datapoints = 3   # 5 分の平均が 3 回（15 分）続いたら
+
+# 件数のメトリクス（任意・2 つまで）。ログのメトリクスフィルタの 5xx などの件数を、5 分ごとの合計で直近 24 時間分読む。
+# いちばん新しい 5 分間の合計が alert_at 以上なら、画面全体を赤にする（CloudWatch のアラームと同じ件数を書く）。
+# 5.2 インチの画面では、リングの下に直近 24 時間の件数と 1 時間ごとの棒グラフを出す（その時間に 5 分間の合計が
+# alert_at 以上になっていれば、棒と件数を赤にする）。値が届かない時間は 0 件とみなす（ログが来ない＝エラー 0 件）
+[[counters]]
+label = "5xx エラー"
+namespace = "Example/Application"
+name = "Http5xx"
+alert_at = 5   # 5 分間に 5 件以上で赤
+
+[[counters]]
+label = "PHP エラー"
+namespace = "Example/Application"
+name = "PhpFatalError"
+alert_at = 1

@@ -14,6 +14,9 @@ git に入れない設定ファイル（``monitor.toml``。見本は ``monitor.e
   なるため（2026-10-16 ユーザーが決定）。成功に戻ってから再び失敗すると ``since`` が変わるので、また出る
 - 鍵は Keychain に置いた読み取り専用の IAM ユーザーのもの（アカウント名 = アクセスキー ID、
   パスワード = シークレット）。値をログや画面に出さない
+- 件数のメトリクス（設定の ``[[counters]]``。ログのメトリクスフィルタの 5xx などの件数）は、5 分ごとの合計を
+  直近 24 時間分読む。いちばん新しい 5 分間の合計が ``alert_at`` 以上なら画面全体を赤にする（CloudWatch の
+  アラームと同じ条件を書く）。5.2 インチの画面は、24 時間の件数と 1 時間ごとの棒グラフを出す（2026-11-03）
 """
 
 from __future__ import annotations
@@ -29,6 +32,9 @@ from pathlib import Path
 METRIC_WINDOW = timedelta(minutes=10)   # 少なくともこの範囲の平均を読む（続けて超えた回数を数えるため、必要なら広げる）
 METRIC_STALE = timedelta(minutes=5)     # これより古い値しかなければ「届いていない」（period が長いときは 2 周期）
 WARNING_MARGIN = 15                     # しきい値のこれだけ手前からオレンジにする
+COUNTER_PERIOD = 300                    # 件数は 5 分ごとの合計で読む（アラームの Period と同じ）
+COUNTER_HOURS = 24                      # 件数を読む範囲（1 時間ごとの棒グラフの本数）
+COUNTER_FRESH = timedelta(minutes=10)   # これより古い 5 分間しかなければ、いまは 0 件とみなす（ログが来ない＝0 件）
 JST = timezone(timedelta(hours=9))
 
 
@@ -64,6 +70,17 @@ class MetricSpec:
 
 
 @dataclass(frozen=True)
+class CounterSpec:
+    """件数のメトリクス。5 分間の合計が ``alert_at`` 以上で画面全体を赤にする。"""
+
+    label: str
+    namespace: str
+    name: str
+    alert_at: float
+    dimensions: tuple[tuple[str, str], ...] = ()
+
+
+@dataclass(frozen=True)
 class MonitorConfig:
     title: str
     region: str
@@ -80,6 +97,7 @@ class MonitorConfig:
     large_alerts: bool = False
     # 確認済みの障害の (種類, 名前) と、障害が始まった時刻（UTC、秒まで）
     acknowledged: tuple[tuple[tuple[str, str], datetime], ...] = ()
+    counters: tuple[CounterSpec, ...] = ()
 
     def display_name(self, incident: "Incident") -> str:
         name = dict(self.names).get(incident.name) or incident.label or incident.name
@@ -110,6 +128,42 @@ class MetricValue:
 
 
 @dataclass(frozen=True)
+class CounterValue:
+    """件数のメトリクスの直近 24 時間。``hourly`` と ``alert_hours`` は古い順に ``COUNTER_HOURS`` 個。"""
+
+    spec: CounterSpec
+    hourly: tuple[float, ...]       # 1 時間ごとの合計（値の無い時間は 0）
+    alert_hours: tuple[bool, ...]   # その時間に、5 分間の合計が alert_at 以上になったか
+    latest: float                   # いちばん新しい 5 分間の合計（COUNTER_FRESH より古ければ 0）
+
+    @property
+    def total(self) -> float:
+        return sum(self.hourly)
+
+    @property
+    def alerting(self) -> bool:
+        return self.latest >= self.spec.alert_at
+
+
+def counter_value(spec: CounterSpec, datapoints: list[dict], now: datetime) -> CounterValue:
+    """5 分ごとの合計（GetMetricStatistics の Sum）から、1 時間ごとの合計と、いまの 5 分間の値を作る。"""
+    start = now - timedelta(hours=COUNTER_HOURS)
+    hourly, alert_hours = [0.0] * COUNTER_HOURS, [False] * COUNTER_HOURS
+    latest, latest_at = 0.0, None
+    for point in datapoints:
+        at, value = point["Timestamp"], float(point["Sum"])
+        index = int((at - start).total_seconds() // 3600)
+        if 0 <= index < COUNTER_HOURS:
+            hourly[index] += value
+            alert_hours[index] |= value >= spec.alert_at
+        if latest_at is None or at > latest_at:
+            latest, latest_at = value, at
+    if latest_at is None or now - latest_at > COUNTER_FRESH:
+        latest = 0.0
+    return CounterValue(spec, tuple(hourly), tuple(alert_hours), latest)
+
+
+@dataclass(frozen=True)
 class Incident:
     kind: str
     name: str
@@ -134,6 +188,7 @@ class ServerStatus:
     metrics: tuple[MetricValue, ...]
     monitor: MonitorState | None
     fetched_at: datetime
+    counters: tuple[CounterValue, ...] = ()
 
 
 @dataclass(frozen=True)
@@ -216,6 +271,10 @@ def load_config(path: str) -> MonitorConfig:
                        tuple(sorted((str(k), str(v)) for k, v in m.get("dimensions", {}).items())),
                        float(m["threshold"]), int(m.get("period", 60)), int(m.get("datapoints", 1)))
             for m in raw["metrics"])
+        counters = tuple(
+            CounterSpec(c["label"], c["namespace"], c["name"], float(c["alert_at"]),
+                        tuple(sorted((str(k), str(v)) for k, v in c.get("dimensions", {}).items())))
+            for c in raw.get("counters", []))
         state = raw.get("state", {})
         config = MonitorConfig(
             title=raw["title"], region=raw["region"], keychain_service=raw["keychain_service"], metrics=metrics,
@@ -223,11 +282,14 @@ def load_config(path: str) -> MonitorConfig:
             state_stale=timedelta(seconds=int(state.get("stale_seconds", 300))),
             red_kinds=tuple(state.get("red_kinds", ("http", "tls"))),
             names=tuple(sorted((str(k), str(v)) for k, v in state.get("names", {}).items())),
-            logo=_logo_path(raw.get("logo"), path), large_alerts=bool(raw.get("large_alerts", False)), acknowledged=_acknowledged(state.get("acknowledged", {})))
+            logo=_logo_path(raw.get("logo"), path), large_alerts=bool(raw.get("large_alerts", False)), acknowledged=_acknowledged(state.get("acknowledged", {})),
+            counters=counters)
     except (KeyError, TypeError, ValueError) as e:
         raise ConfigError(f"設定ファイルの項目が足りないか、形が違います: {e!r}") from e
     if len(config.metrics) != 4:
         raise ConfigError(f"metrics は 4 つ書く（画面が 2×2 のため）: {len(config.metrics)} 個")
+    if len(config.counters) > 2:
+        raise ConfigError(f"counters は 2 つまで（5.2 インチの画面の行が 2 つのため）: {len(config.counters)} 個")
     for spec in config.metrics:
         if spec.period < 60 or spec.period % 60 or spec.datapoints < 1:
             raise ConfigError(f"{spec.label}: period は 60 の倍数、datapoints は 1 以上にする")
@@ -283,11 +345,16 @@ def short_reason(reason: str) -> str:
 
 
 def assess(status: ServerStatus, config: MonitorConfig, now: datetime) -> Assessment:
-    """アラートは気付くべき順（監視の停止 → サイト → 値が届かない → しきい値）に並べる。画面には先頭を出す。
+    """アラートは気付くべき順（監視の停止 → サイト → 件数 → 値が届かない → しきい値）に並べる。画面には先頭を出す。
 
     確認済みの障害は、赤にも件数にも入れない。
     """
     stopped, site, missing, over, warnings, alerting_metrics, acknowledged = [], [], [], [], [], set(), []
+    errors = []  # 件数のメトリクスが、5 分間に alert_at 以上（利用者にエラーが出ている）
+    for counter in status.counters:
+        if counter.alerting:
+            errors.append(f"{counter.spec.label} {counter.latest:g} 件（5 分間）")
+            alerting_metrics.add(counter.spec.label)
     for metric in status.metrics:
         spec = metric.spec
         if metric.value is None or metric.at is None or now - metric.at > spec.stale_after:
@@ -325,7 +392,7 @@ def assess(status: ServerStatus, config: MonitorConfig, now: datetime) -> Assess
                 counts = "・".join(text for text in (f"ジョブ障害 {jobs} 件" if jobs else "",
                                                      f"監視の障害 {rest} 件" if rest else "") if text)
                 warnings.append(f"{counts}（{first} ほか）")
-    return Assessment(tuple(stopped + site + missing + over), tuple(warnings), frozenset(alerting_metrics),
+    return Assessment(tuple(stopped + site + errors + missing + over), tuple(warnings), frozenset(alerting_metrics),
                       tuple(acknowledged))
 
 
@@ -389,6 +456,14 @@ class AwsReader:
                 points = response.get("Datapoints", [])
                 value, at = latest(points)
                 metrics.append(MetricValue(spec, value, at, over_streak(points, spec.threshold, spec.period)))
+            counters = []
+            for spec in self.config.counters:  # 5 分ごと × 24 時間 = 288 点（1 回で取れる 1,440 点の内）
+                response = cloudwatch.get_metric_statistics(
+                    Namespace=spec.namespace, MetricName=spec.name,
+                    Dimensions=[{"Name": k, "Value": v} for k, v in spec.dimensions],
+                    StartTime=now - timedelta(hours=COUNTER_HOURS), EndTime=now, Period=COUNTER_PERIOD,
+                    Statistics=["Sum"])
+                counters.append(counter_value(spec, response.get("Datapoints", []), now))
             monitor = None
             if self.config.state_bucket and self.config.state_key:
                 obj = s3.get_object(Bucket=self.config.state_bucket, Key=self.config.state_key)
@@ -403,4 +478,4 @@ class AwsReader:
             raise FetchError("通信できません") from e
         except ValueError as e:
             raise FetchError("監視の状態を読めません") from e
-        return ServerStatus(tuple(metrics), monitor, now)
+        return ServerStatus(tuple(metrics), monitor, now, tuple(counters))

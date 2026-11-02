@@ -38,10 +38,26 @@ DETAIL_LINE = 18
 
 
 @dataclass(frozen=True)
+class _CounterRows:
+    """件数の行。左に名前、中ほどに 1 時間ごとの棒グラフ、右に直近 24 時間の件数。寸法は 3.5 インチの値。"""
+
+    top: float                              # 1 行目の上端
+    height: float                           # 行の高さ
+    left: float
+    right: float
+    baseline: float                         # 行の上端から、名前と件数の基準線まで
+    spark: tuple[float, float, float, float]  # 棒グラフの左端・幅・高さ・下端（行の上端から）
+    label_size: int
+    number_size: int
+    unit_size: int
+
+
+@dataclass(frozen=True)
 class _Layout:
     """配置。座標はすべて 3.5 インチの画面のピクセル。区画の中の位置は区画の左上から測る。
 
     ``k`` は、描くときに座標と字の大きさに掛ける倍率（5.2 インチは高さの比 720 ÷ 320 = 2.25）。
+    ``headings`` は灰色の小見出し（x・y・文言・大きさ・太さ・anchor）、``counter_rows`` は件数の行（無ければ描かない）。
     """
 
     size: tuple[float, float]
@@ -64,6 +80,8 @@ class _Layout:
     threshold: tuple[float, float, str, int]     # しきい値の位置・anchor・大きさ
     dividers: tuple[tuple[float, float, float, float], ...]
     k: float = 1.0
+    headings: tuple[tuple[float, float, str, int, int, str], ...] = ()
+    counter_rows: _CounterRows | None = None
 
 
 LANDSCAPE = _Layout(
@@ -94,25 +112,31 @@ PORTRAIT = _Layout(
     cells=((0, 80), (160, 80), (0, 280), (160, 280)), ring=(80, 100, 56, 12), label=(80, 28, "ms", 18),
     number=(80, 112, 34, 16, True), threshold=(80, 184, "ms", 14), dividers=((160, 92, 160, 466), (16, 280, 304, 280)))
 
-# 5.2 インチ（1280×720）。横置きの 2×2 を、高さの比 2.25 倍で描く（2026-11-02 にユーザーが見本で選んだ「案 1」を、
-# 2026-11-03 に入れた。docs/handover.md §4-23・§4-25）。3.5 インチの寸法での横幅は 1280 ÷ 2.25 ≒ 569 になるので、
-# 区切り線を中央に置く。帯は横置きと同じ幅 248 で中央に置く。
-# リングは、実機を見たユーザーの指示で半径 52→60（外径 234→270 px）、数字を 38→44 にした（同日、見本の案 B）。
-# 縦に収まる最大の大きさで、上の段のリングの上端 57 は異常の 2 行の帯の下端（BIG_BOX、54）の下、下の段の下端 312 は
-# 画面（320）の内側。そのため上下の段を 48・183 に、横の区切り線を 184.5 に動かした。リングと文字のまとまり
-# （リング 120・間 9・15 ピクセルの「しきい値 80%」99）は、左右の区画の中央に置く
+# 5.2 インチ（1280×720）。高さの比 2.25 倍で描く（2026-11-03。docs/handover.md §4-25・§4-26）。
+# 見出しは横置きと同じ（帯は同じ幅 248 で中央）。その下を Apple の HIG の「関係する項目をまとめる」「重要なものを
+# 上と左に」（Layout）と、グループ化した一覧（Lists and tables）にならって 2 つにまとめた。上の「サーバー」は
+# 4 つのリングを横 1 列に、下の「サイト」は件数の行（5xx・PHP エラー）を、左に名前・中ほどに直近 24 時間の
+# 1 時間ごとの棒グラフ・右に件数で出す。ユーザーが見本で選んだ（それまでの 2×2 は §4-25）。寸法は 5.2 インチの
+# 見本のピクセルで書き、_px で 3.5 インチの寸法にする
 _K_LARGE = 720 / 320
 _W_LARGE = 1280 / _K_LARGE
-_MID_LARGE = 20 + (_W_LARGE - 40) / 2
-_RING_LARGE = 60
-_TEXT_LARGE = 2 * _RING_LARGE + 9  # 名前としきい値の左端（区画の左から）
-_LEFT_LARGE = ((_MID_LARGE - 20) - (_TEXT_LARGE + 99)) / 2  # 区画の中で、まとまりを中央に置くための左の余白
+
+
+def _px(value: float) -> float:
+    """5.2 インチの画面のピクセルを、3.5 インチの寸法にする。"""
+    return value / _K_LARGE
+
+
 LANDSCAPE_LARGE = replace(
     LANDSCAPE, size=(_W_LARGE, 320), k=_K_LARGE, pill=(round(_W_LARGE / 2 - 124), 4, round(_W_LARGE / 2 + 124), 34),
-    cells=((20 + _LEFT_LARGE, 48), (_MID_LARGE + _LEFT_LARGE, 48), (20 + _LEFT_LARGE, 183),
-           (_MID_LARGE + _LEFT_LARGE, 183)),
-    ring=(_RING_LARGE, 69, _RING_LARGE, 12), label=(_TEXT_LARGE, 65, "ls", 22), number=(_RING_LARGE, 84, 44, 0, True),
-    threshold=(_TEXT_LARGE, 90, "ls", 15), dividers=((_MID_LARGE, 56, _MID_LARGE, 304), (20, 184.5, _W_LARGE - 20, 184.5)))
+    cells=tuple((_px(190 + 300 * i), 0) for i in range(4)),  # リングの中心の x（区画は幅 300 px で 4 つ）
+    ring=(0, _px(238), _px(86), _px(20)), label=(0, _px(366), "ms", 14), number=(0, _px(259), 27, 0, True),
+    threshold=(0, _px(396), "ms", 11), dividers=((_px(40), _px(418), _px(1240), _px(418)),),
+    headings=((_px(60), _px(122), "サーバー", 12, 6, "ls"), (_px(60), _px(456), "サイト", 12, 6, "ls"),
+              (_px(330), _px(456), "直近 24 時間（1 時間ごと）", 10, SMALL_WEIGHT, "ls")),
+    counter_rows=_CounterRows(top=_px(476), height=_px(112), left=_px(60), right=_px(1220), baseline=_px(70),
+                              spark=(_px(330), _px(560), _px(52), _px(78)), label_size=15, number_size=22,
+                              unit_size=12))
 
 
 def layout_for(size: tuple[int, int], portrait: bool = False) -> _Layout:
@@ -324,6 +348,28 @@ def render(status: ServerStatus | None, assessment: Assessment | None, config: M
             message_left = center - (length(message_font, message) + dot_space) / 2 + dot_space
             shapes.circle(message_left - layout.dot_radius - 5, layout.dot_y, layout.dot_radius,
                           ORANGE if warn else GREEN)
+    # 件数の行の図形（0 の線と 1 時間ごとの棒）。警報の条件を満たした時間の棒は赤（赤の画面では白か薄い色）
+    rows = layout.counter_rows
+    counters = status.counters if status else ()
+    counter_specs = [c.spec for c in counters] or list(config.counters)
+    if rows is not None:
+        spark_x, spark_w, spark_h, spark_bottom = rows.spark
+        step, one = spark_w / 24, 1 / k  # 1 は画面の 1 ピクセル
+        for index, spec in enumerate(counter_specs):
+            counter = counters[index] if counters else None
+            bottom = rows.top + rows.height * index + spark_bottom
+            shapes.pill((spark_x, bottom - one, spark_x + spark_w, bottom), divider if red else _mix(SECONDARY, BACKGROUND, 0.45),
+                        radius=0)
+            if counter is None:
+                continue
+            strong = WHITE if spec.label in alerting else faint
+            peak = max(spec.alert_at, *counter.hourly, 1)
+            for hour, (count, alarmed) in enumerate(zip(counter.hourly, counter.alert_hours)):
+                if count > 0:
+                    height = max(5 * one, spark_h * count / peak)
+                    color = strong if red else (RED if alarmed else LABEL)
+                    shapes.pill((spark_x + hour * step + 2 * one, bottom - height, spark_x + (hour + 1) * step - 2 * one,
+                                 bottom), color, radius=2 * one)
     image = shapes.finish()
     draw = ImageDraw.Draw(image)
 
@@ -384,4 +430,30 @@ def render(status: ServerStatus | None, assessment: Assessment | None, config: M
         for line_index, line in enumerate(lines):
             draw.text(at(x + threshold_x, y + threshold_y + line_step * line_index), line,
                       font=font(sized(threshold_size), SMALL_WEIGHT), fill=faint, anchor=threshold_anchor)
+
+    # 小見出し（灰色）。異常の文言の帯にかかるものは描かない（2 行の帯は「サーバー」の小見出しまで伸びる）
+    for hx, hy, text, size, weight, anchor in layout.headings:
+        if big_lines and hy - size <= BIG_BOX[len(big_lines)][1]:
+            continue
+        draw.text(at(hx, hy), text, font=font(sized(size), weight), fill=faint, anchor=anchor)
+
+    # 件数の行: 左に名前、右に直近 24 時間の件数（警報の条件を満たした時間があれば赤）
+    if rows is not None:
+        for index, spec in enumerate(counter_specs):
+            counter = counters[index] if counters else None
+            top = rows.top + rows.height * index
+            if index:
+                draw.line((*at(rows.left, top), *at(rows.right, top)), fill=divider, width=sized(1))
+            strong = WHITE if (not red or spec.label in alerting) else faint
+            baseline = top + rows.baseline
+            draw.text(at(rows.left, baseline), spec.label, font=font(sized(rows.label_size), 6), fill=strong,
+                      anchor="ls")
+            unit_font = font(sized(rows.unit_size), SMALL_WEIGHT)
+            number = "--" if counter is None else f"{counter.total:g}"
+            if counter is not None:
+                draw.text(at(rows.right, baseline), "件", font=unit_font, fill=faint, anchor="rs")
+            number_right = rows.right - (length(unit_font, "件") + 6 / k if counter is not None else 0)
+            alarmed = counter is not None and any(counter.alert_hours)
+            draw.text(at(number_right, baseline), number, font=rounded(sized(rows.number_size)),
+                      fill=strong if red else (RED if alarmed else LABEL), anchor="rs")
     return image

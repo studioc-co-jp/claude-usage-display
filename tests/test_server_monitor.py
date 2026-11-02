@@ -40,6 +40,23 @@ class ConfigTest(unittest.TestCase):
         self.assertEqual(cfg.display_name(sm.Incident("http", "top", "", None)), "トップ")
         self.assertEqual(cfg.display_name(sm.Incident("tls", "example.com", "", None)), "証明書 example.com")
 
+    def test_counters_are_optional_and_at_most_two(self):
+        cfg = sm.load_config(str(EXAMPLE))
+        self.assertEqual([(c.label, c.name, c.alert_at) for c in cfg.counters],
+                         [("5xx エラー", "Http5xx", 5), ("PHP エラー", "PhpFatalError", 1)])
+        text = EXAMPLE.read_text()
+        start = text.index("[[counters]]")
+        for body, ok in ((text[:start], True), (text + "\n" + text[start:], False)):  # 0 個は省ける、4 個は多すぎる
+            with tempfile.NamedTemporaryFile("w", suffix=".toml", delete=False) as f:
+                f.write(body)
+            self.addCleanup(Path(f.name).unlink)
+            with self.subTest(ok=ok):
+                if ok:
+                    self.assertEqual(sm.load_config(f.name).counters, ())
+                else:
+                    with self.assertRaises(sm.ConfigError):
+                        sm.load_config(f.name)
+
     def test_period_and_datapoints_are_checked(self):
         text = EXAMPLE.read_text()
         for bad in ("period = 90", "period = 30", "datapoints = 0"):
@@ -215,6 +232,41 @@ class AssessTest(unittest.TestCase):
         self.assertEqual([sm.warning_tint(v, 80) for v in (64, 65, 79, 80)], ["normal", "warning", "warning", "critical"])
 
 
+class CounterTest(unittest.TestCase):
+    SPEC = sm.CounterSpec("5xx エラー", "Example/Application", "Http5xx", 5)
+
+    def test_hourly_totals_alarmed_hours_and_the_latest_five_minutes(self):
+        points = [{"Timestamp": NOW - timedelta(hours=23, minutes=50), "Sum": 2.0},   # 最初の時間
+                  {"Timestamp": NOW - timedelta(minutes=55), "Sum": 1.0},             # 最後の時間
+                  {"Timestamp": NOW - timedelta(minutes=10), "Sum": 6.0},             # 最後の時間（5 件以上）
+                  {"Timestamp": NOW - timedelta(minutes=5), "Sum": 3.0},              # いちばん新しい 5 分間
+                  {"Timestamp": NOW - timedelta(hours=25), "Sum": 9.0}]               # 24 時間より前は数えない
+        value = sm.counter_value(self.SPEC, points, NOW)
+        self.assertEqual(len(value.hourly), 24)
+        self.assertEqual((value.hourly[0], value.hourly[-1], value.total), (2.0, 10.0, 12.0))
+        self.assertEqual((value.alert_hours[0], value.alert_hours[-1]), (False, True))
+        self.assertEqual(value.latest, 3.0)
+        self.assertFalse(value.alerting)  # いまの 5 分間は 3 件（5 件未満）
+
+    def test_latest_is_zero_when_no_recent_five_minutes(self):
+        # ログが来ない時間は値が無い（警報も欠けた点を 0 件として扱う）。古い 5 分間の値で赤にしない
+        stale = [{"Timestamp": NOW - timedelta(minutes=30), "Sum": 12.0}]
+        value = sm.counter_value(self.SPEC, stale, NOW)
+        self.assertEqual((value.latest, value.alerting, value.total), (0.0, False, 12.0))
+        fresh = [{"Timestamp": NOW - timedelta(minutes=5), "Sum": 12.0}]
+        self.assertTrue(sm.counter_value(self.SPEC, fresh, NOW).alerting)
+
+    def test_alerting_counter_turns_the_screen_red_after_site_alerts(self):
+        cfg = config(counters=(self.SPEC,))
+        alarmed = sm.counter_value(self.SPEC, [{"Timestamp": NOW - timedelta(minutes=5), "Sum": 11.0}], NOW)
+        base = status(cfg=cfg)
+        st = sm.ServerStatus(base.metrics, base.monitor, base.fetched_at, (alarmed,))
+        assessment = sm.assess(st, cfg, NOW)
+        self.assertTrue(assessment.red)
+        self.assertEqual(assessment.alerts, ("5xx エラー 11 件（5 分間）",))
+        self.assertIn("5xx エラー", assessment.alerting_metrics)
+
+
 class ReaderTest(unittest.TestCase):
     def test_credentials_come_from_keychain(self):
         attrs = mock.Mock(stdout='keychain: "x"\n    "acct"<blob>="AKIAEXAMPLE"\n')
@@ -233,8 +285,8 @@ class ReaderTest(unittest.TestCase):
     def test_fetch_reads_metrics_and_state(self):
         cloudwatch = mock.Mock()
         cloudwatch.get_metric_statistics.return_value = {
-            "Datapoints": [{"Timestamp": NOW - timedelta(minutes=2), "Average": 95.0},
-                           {"Timestamp": NOW - timedelta(minutes=1), "Average": 11.0}]}
+            "Datapoints": [{"Timestamp": NOW - timedelta(minutes=2), "Average": 95.0, "Sum": 95.0},
+                           {"Timestamp": NOW - timedelta(minutes=1), "Average": 11.0, "Sum": 11.0}]}
         s3 = mock.Mock()
         s3.get_object.return_value = {"Body": io.BytesIO(b'{"http:top": {"alerting": true, "reason": "x"}}'),
                                       "LastModified": NOW - timedelta(seconds=20)}
@@ -248,6 +300,11 @@ class ReaderTest(unittest.TestCase):
         # スワップは 5 分ごとの平均を、3 回続いたかが分かる範囲（5 分×5）で読む
         self.assertEqual((calls[3]["Period"], calls[3]["EndTime"] - calls[3]["StartTime"]), (300, timedelta(minutes=25)))
         self.assertEqual(calls[0]["EndTime"] - calls[0]["StartTime"], timedelta(minutes=10))
+        # 件数は、5 分ごとの合計を直近 24 時間分読む（4 つのメトリクスの後）
+        self.assertEqual([(c["MetricName"], c["Period"], c["Statistics"], c["EndTime"] - c["StartTime"]) for c in calls[4:]],
+                         [("Http5xx", 300, ["Sum"], timedelta(hours=24)), ("PhpFatalError", 300, ["Sum"], timedelta(hours=24))])
+        self.assertEqual([c.latest for c in result.counters], [11.0, 11.0])
+        self.assertEqual(result.counters[0].alerting, True)  # 5 分間に 11 件（5 件以上）
 
     def test_errors_are_short_messages(self):
         from botocore.exceptions import ClientError, EndpointConnectionError

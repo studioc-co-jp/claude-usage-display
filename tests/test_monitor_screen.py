@@ -1,5 +1,6 @@
 import tempfile
 import unittest
+from dataclasses import replace
 from datetime import timedelta
 from pathlib import Path
 
@@ -14,6 +15,18 @@ from tests.test_server_monitor import NOW, config, status
 
 def near(pixel, color, tolerance=12):
     return all(abs(a - b) <= tolerance for a, b in zip(pixel, color))
+
+
+COUNTERS = (sm.CounterSpec("5xx エラー", "Example/Application", "Http5xx", 5),
+            sm.CounterSpec("PHP エラー", "Example/Application", "PhpFatalError", 1))
+
+
+def status_with_counters(hourly_5xx=(0,) * 24, alarmed_5xx=(False,) * 24, latest_5xx=0):
+    """件数の見本（5xx だけ値を変えられる。PHP は 0 件）を付けた状態。"""
+    base = status(cfg=config(counters=COUNTERS))
+    return sm.ServerStatus(base.metrics, base.monitor, base.fetched_at, (
+        sm.CounterValue(COUNTERS[0], tuple(map(float, hourly_5xx)), tuple(alarmed_5xx), float(latest_5xx)),
+        sm.CounterValue(COUNTERS[1], (0.0,) * 24, (False,) * 24, 0.0)))
 
 
 class MonitorScreenTest(unittest.TestCase):
@@ -72,32 +85,69 @@ class MonitorScreenTest(unittest.TestCase):
         _, _, radius, width = ms.LANDSCAPE.ring
         self.assertLess(ms.rounded(number_size).getlength("100"), 2 * (radius - width) - 6)  # 「100」もリングの内側に収まる
 
-    def test_large_layout_is_the_landscape_scaled_to_the_52_inch_display(self):
-        # 2026-11-03、5.2 インチ（1280×720）に、横置きの 2×2 を 2.25 倍で描く（ユーザーが見本で選んだ案 1）
+    def test_large_layout_has_a_row_of_rings_and_the_counter_rows(self):
+        # 2026-11-03、5.2 インチは、4 つのリングを横 1 列に、その下に件数の行（5xx・PHP エラー）を置く
+        # （ユーザーが見本で選んだ。それまでの 2×2 は 2.25 倍の横置き）
         large = ms.LANDSCAPE_LARGE
         self.assertIs(ms.layout_for((1280, 720)), large)
         self.assertIs(ms.layout_for((480, 320)), ms.LANDSCAPE)
         self.assertIs(ms.layout_for((320, 480), portrait=True), ms.PORTRAIT)
-        image = self.render(status())
-        big = ms.render(status(), sm.assess(status(), config(), NOW), config(), layout=large)
-        self.assertEqual((image.size, big.size), ((480, 320), (1280, 720)))
-        # しきい値（15 ピクセル）の右端は、左の列は中央の区切り線の手前、右の列は右の余白の内側
-        threshold_x, _, _, size = large.threshold
-        width = font(size, SMALL_WEIGHT).getlength("しきい値 85%")
-        divider = large.dividers[0][0]
-        self.assertLess(large.cells[0][0] + threshold_x + width, divider)
-        self.assertLess(large.cells[1][0] + threshold_x + width, large.size[0] - large.inset)
-        self.assertGreater(large.cells[1][0] + large.ring[0] - large.ring[2], divider)  # 右の列のリングは区切り線の右
-        # 同日、リングを半径 52→60 にした（ユーザーの指示）。上の段は異常の 2 行の帯の下、下の段は画面の内側に収まる
-        _, cy, radius, _ = large.ring
-        self.assertEqual(radius, 60)
-        self.assertGreaterEqual(large.cells[0][1] + cy - radius, ms.BIG_BOX[2][1] + 3)
-        self.assertLessEqual(large.cells[2][1] + cy + radius, 320 - 8)
-        line = large.dividers[1][1]
-        self.assertLess(large.cells[0][1] + cy + radius, line)  # 上の段のリングは横の区切り線の上
-        self.assertGreater(large.cells[2][1] + cy - radius, line)  # 下の段のリングは横の区切り線の下
-        number = ms.rounded(large.number[2]).getlength("100")
-        self.assertLess(number, 2 * (radius - large.ring[3]) - 6)  # 「100」もリングの内側に収まる
+        cfg = config(counters=COUNTERS)
+        st = status_with_counters()
+        big = ms.render(st, sm.assess(st, cfg, NOW), cfg, layout=large)
+        self.assertEqual(big.size, (1280, 720))
+        # リングは横 1 列で、隣と重ならず、横の区切り線の上に収まる。「100」もリングの内側に収まる
+        _, cy, radius, width = large.ring
+        xs = [x for x, _ in large.cells]
+        self.assertEqual(len(xs), 4)
+        self.assertTrue(all(b - a > 2 * radius + 20 for a, b in zip(xs, xs[1:])))
+        self.assertLess(cy + radius, large.dividers[0][1])
+        self.assertGreater(cy - radius, ms.BIG_BOX[2][1])  # 異常の 2 行の帯の下
+        self.assertLess(ms.rounded(large.number[2]).getlength("100"), 2 * (radius - width) - 6)
+        # 件数の行は画面の内側に収まる
+        rows = large.counter_rows
+        self.assertLessEqual(rows.top + rows.height * 2, 320)
+
+    def test_counter_rows_show_the_total_and_red_bars_for_alarmed_hours(self):
+        cfg = config(counters=COUNTERS)
+        st = status_with_counters(hourly_5xx=(0,) * 21 + (1, 3, 12), alarmed_5xx=(False,) * 23 + (True,))
+        image = ms.render(st, sm.assess(st, cfg, NOW), cfg, layout=ms.LANDSCAPE_LARGE)
+        k, rows = ms.LANDSCAPE_LARGE.k, ms.LANDSCAPE_LARGE.counter_rows
+        spark_x, spark_w, spark_h, bottom = rows.spark
+        # 最後の時間（警報の条件を満たした）の棒は赤、その前の時間の棒は白
+        y = round((rows.top + bottom - 2) * k)
+        last = round((spark_x + spark_w * 23.5 / 24) * k)
+        before = round((spark_x + spark_w * 22.5 / 24) * k)
+        self.assertTrue(near(image.getpixel((last, y)), RED, 30))
+        self.assertTrue(near(image.getpixel((before, y)), (255, 255, 255), 30))
+        # 警報の条件を満たした時間があれば、件数（16）も赤。PHP の行（0 件）は白
+        number_row = [image.getpixel((x, round((rows.top + rows.baseline - 8) * k))) for x in range(1050, 1180)]
+        self.assertTrue(any(near(p, RED, 30) for p in number_row))
+
+    def test_counter_alert_turns_the_screen_red(self):
+        # 2026-11-03、5xx・PHP エラーが警報の条件（5 分間の合計が alert_at 以上）を満たしたら画面全体を赤にする
+        cfg = config(counters=COUNTERS, large_alerts=True)
+        st = status_with_counters(latest_5xx=11)
+        assessment = sm.assess(st, cfg, NOW)
+        self.assertTrue(assessment.red)
+        self.assertEqual(assessment.alerts[0], "5xx エラー 11 件（5 分間）")
+        for layout in (ms.LANDSCAPE_LARGE, ms.LANDSCAPE):
+            image = ms.render(st, assessment, cfg, layout=layout)
+            self.assertEqual(image.getpixel((2, image.height - 2)), RED)
+
+    def test_headings_under_a_two_line_alert_are_not_drawn(self):
+        # 2 行の異常の文言の帯は「サーバー」の小見出しまで伸びるので、その小見出しは描かない
+        cfg = config(counters=COUNTERS, large_alerts=True)
+        long = "トップ 本文に必要な文字列が無い状態が続いていて、再読み込みしても戻らない"
+        st = status_with_counters()
+        assessment = sm.Assessment((long,), (), frozenset())
+        image = ms.render(st, assessment, cfg, layout=ms.LANDSCAPE_LARGE)
+        k = ms.LANDSCAPE_LARGE.k
+        _hx, hy, _text, size, _w, _a = ms.LANDSCAPE_LARGE.headings[0]
+        self.assertLessEqual(hy - size, ms.BIG_BOX[2][1])  # この小見出しは 2 行の帯にかかる位置にある
+        bare = ms.render(st, assessment, cfg, layout=replace(ms.LANDSCAPE_LARGE, headings=()))
+        band = (0, 0, 1280, round(ms.BIG_BOX[2][1] * k))  # 帯の下端までは、小見出しの無い配置と同じ
+        self.assertEqual(image.crop(band).tobytes(), bare.crop(band).tobytes())
 
     def test_landscape_long_labels_fit_their_cells(self):
         # 2026-10-27 に名前を 18→22 ピクセルにした。左の列の名前は区切り線の手前、右の列の名前は
