@@ -71,7 +71,7 @@ class PaceTest(unittest.TestCase):
         self.assertLess(pace_end + 40, number_start)
         line = font(pace.LINE[1], 6)
         reset_end = pace.MARGIN + line.getlength("リセット 12/31(木) 23:59")
-        remain_start = SIZE[0] - pace.MARGIN - font(pace.LINE[1], 3).getlength("あと6日23時間")
+        remain_start = SIZE[0] - pace.MARGIN - line.getlength("あと6日23時間")  # 残り時間もリセットと同じ字
         self.assertLess(reset_end + 40, remain_start)
 
     def test_unit_is_smaller_than_half_of_the_number(self):

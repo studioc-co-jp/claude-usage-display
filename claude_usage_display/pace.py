@@ -103,6 +103,8 @@ def render(snapshot: Snapshot | None, now: datetime, status: str | None = None,
                       font=rounded(sized(NUMBER[1])), fill=LABEL, anchor="rs")
         when, remain = gauge.reset_lines(meter.resets_at, now)
         baseline = (top + LINE[0]) * s
-        draw.text((left, baseline), _reset_text(when), font=font(sized(LINE[1]), 6), fill=LABEL, anchor="ls")
-        draw.text((right, baseline), remain, font=font(sized(LINE[1]), 3), fill=LABEL, anchor="rs")
+        # リセットと残り時間は、大きさも太さも同じ（2026-11-03、残り時間を W3 にしていたら小さく見えるとユーザーが指摘）
+        line_font = font(sized(LINE[1]), 6)
+        draw.text((left, baseline), _reset_text(when), font=line_font, fill=LABEL, anchor="ls")
+        draw.text((right, baseline), remain, font=line_font, fill=LABEL, anchor="rs")
     return image
