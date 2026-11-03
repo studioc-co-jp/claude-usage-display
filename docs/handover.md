@@ -532,6 +532,12 @@ scripts/uninstall-launch-agent.sh                                 # 自動起動
 - **入れたこと**: `gauge.load_icons` が `reset.png` も読む。`pace` は、それがあれば「リセット」の文字の代わりに記号を時刻の左に出す（一辺は下の行の字の大きさと同じ、間は 0.3 倍。縦の中心は数字の字の高さの中ほど）。字の大きさを決める幅に記号の分も入れる。「リセット済み」は文字のまま。記号が無ければ、これまでどおり文字。テスト `test_reset_mark_replaces_the_word_when_the_icon_exists`（緑の四角の見本）
 - 画像は `~/Library/Application Support/claude-usage-display/icons/reset.png`（388×382、白一色・背景透明）。**リポジトリには入れない**（CLAUDE.md）。書き出し直すときは、上の Swift の方法で `arrow.circlepath` を pointSize 160・semibold で描く
 
+### 4-28. 利用枠の API から 5 時間の枠が消えた（2026-11-03 15:47 から）
+
+- **観測**: 常駐のログで、2026-11-03 15:47:50 の取得から「利用枠の API の枠: weekly_all・is_active、weekly_scoped（Fable）」となり、`session` の項目そのものが `limits` から消えた（その直前の記録は同日 08:09 の「session、weekly_all・is_active、weekly_scoped（Fable）」）。同時に警告「5 時間の枠が利用枠の API の応答にありません（limits に session が無いか、使用率が空）」が出て、Claude の画面の見出しに「5時間の枠がなくなりました」が出た（§5 の 12 の「気づくための仕組み」が働いた）。2026-11-04 07:42 の時点でも戻っていない
+- §5 の 12 で「そのときに確かめる」としていた、制限が外れた後の API の形は、**`session` の項目が `limits` から消える**だった（`is_active` だけが変わる形ではなかった）。公式の確かめ方（claude.ai の Settings > Usage に Current session が無いこと）は、こちらからは画面を見られないので、ユーザーに伝えた
+- **ユーザーの決定**: 画面は「いまのまま」（5 時間の段は「--」のまま、見出しの注意も出し続ける。枠が戻れば値が出る）。週次だけにする案・Fable 週次を代わりに出す案は選ばれなかった
+
 ## 5. 残っている作業（上から順に）
 
 1〜5 は 2026-10-05 に終えた（README.md、CLAUDE.md、requirements.txt と .gitignore、自動起動の作成と登録、git の初期化と push）。
