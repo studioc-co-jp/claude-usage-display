@@ -524,6 +524,14 @@ scripts/uninstall-launch-agent.sh                                 # 自動起動
 - **5.2 インチの 5xx エラーと PHP エラーの行の間の罫線を消した**（2026-11-04、ユーザーの指示「5 インチの 5xx エラー、PHP エラーの間の罫線不要」）。件数の行の区切り線を描く処理を外した（件数の行は 5.2 インチの配置だけが持つ）。テスト `test_no_line_between_the_counter_rows`
 - **続けて行の間を詰め、その分リングを大きくした**（同日、ユーザーの指示）。件数の行の高さを 108→80（行の中身の間 56→28 px）、上端を 504→532 にし、リングを外径 240→268 px・太さ 26→29 px・数字 86→97 px に、名前・しきい値の基準線を 408・438 → 436・466 にした。リングの上端 128 px・しきい値と「直近 24 時間」の間 39 px・画面の下の余白 32 px は変えていない（画素で測った）。隣のリングとの間は 32 px、両端のリングと画面の端の間は 56 px
 
+### 4-27. 利用枠の画面の「リセット」を、SF Symbols の記号にした（2026-11-04）
+
+- **ユーザーの指示**: 「claude モニター: リセットの文字列じゃなくてリセットであることが分かるアイコンにしたい。どんなアイコンがあるか提案して」
+- **SF Symbols の使用の条件**（調べたこと）: HIG の SF Symbols のページは、使用の条件を確かめるよう求め、アプリのアイコン・ロゴ・商標としての使用を禁じる。条件の本文は Xcode and Apple SDKs Agreement の 2.10「System-Provided Images」: "licensed to You solely for the purpose of developing Applications for Apple-branded products that run on the system for which the image was provided"（https://www.apple.com/legal/sla/docs/xcode.pdf を pdftotext で読んだ）。最初は自前で描いた図記号の 3 案を作ったが、ユーザーが「クローズで自分だけが使う。配布することもない」と伝えた。リポジトリは public なので、画像はリポジトリに入れず、Apple のロゴと同じくアイコンのフォルダに置く形にした
+- **候補**: SF Symbols のアプリは入っていないが、macOS に内蔵の記号を Swift（`NSImage(systemSymbolName:)` を白一色の `SymbolConfiguration` で `NSBitmapImageRep` に描く）で PNG に書き出せた。10 個（`arrow.counterclockwise`・`arrow.clockwise`・`arrow.triangle.2.circlepath`・`arrow.circlepath`・`clock.arrow.circlepath`・`arrow.counterclockwise.circle`・`clock.arrow.trianglehead.counterclockwise.rotate.90`・`calendar.badge.clock`・`timer`・`hourglass`）の一覧と、5 つを画面に入れた見本を見せ、**ユーザーが 4 の `arrow.circlepath` を選んだ**
+- **入れたこと**: `gauge.load_icons` が `reset.png` も読む。`pace` は、それがあれば「リセット」の文字の代わりに記号を時刻の左に出す（一辺は下の行の字の大きさと同じ、間は 0.3 倍。縦の中心は数字の字の高さの中ほど）。字の大きさを決める幅に記号の分も入れる。「リセット済み」は文字のまま。記号が無ければ、これまでどおり文字。テスト `test_reset_mark_replaces_the_word_when_the_icon_exists`（緑の四角の見本）
+- 画像は `~/Library/Application Support/claude-usage-display/icons/reset.png`（388×382、白一色・背景透明）。**リポジトリには入れない**（CLAUDE.md）。書き出し直すときは、上の Swift の方法で `arrow.circlepath` を pointSize 160・semibold で描く
+
 ## 5. 残っている作業（上から順に）
 
 1〜5 は 2026-10-05 に終えた（README.md、CLAUDE.md、requirements.txt と .gitignore、自動起動の作成と登録、git の初期化と push）。

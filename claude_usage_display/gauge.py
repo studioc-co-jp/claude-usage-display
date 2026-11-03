@@ -327,9 +327,13 @@ def paste_mark(image: Image.Image, mark: Image.Image, left: float, center_y: flo
 
 
 def load_icons(directory: str | Path) -> dict[str, Image.Image]:
-    """``directory`` の ``claude.png`` と ``gemini.png`` を読む。無いものは飛ばす。周りの透明な余白は切り落とす。"""
+    """``directory`` の ``claude.png``・``gemini.png``・``reset.png`` を読む。無いものは飛ばす。周りの透明な余白は切り落とす。
+
+    ``reset`` は、5時間と週次の横棒の画面（pace）で「リセット」の文字の代わりに出す記号（2026-11-04。この Mac では
+    SF Symbols の arrow.circlepath を白一色で書き出したもの。リポジトリには入れない）。
+    """
     icons = {}
-    for name in ("claude", "gemini"):
+    for name in ("claude", "gemini", "reset"):
         path = Path(directory) / f"{name}.png"
         if path.is_file():
             icons[name] = load_mark(path)

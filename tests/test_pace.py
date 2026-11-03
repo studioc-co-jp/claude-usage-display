@@ -106,3 +106,28 @@ class PaceTest(unittest.TestCase):
 
     def test_scales_to_the_small_screen(self):
         self.assertEqual(pace.render(snapshot(), NOW, size=(480, 320)).size, (480, 320))
+
+    def test_reset_mark_replaces_the_word_when_the_icon_exists(self):
+        # 2026-11-04、「リセット」の文字の代わりに記号（アイコンのフォルダの reset.png）を出す（ユーザーの指示）。
+        # 本物の記号（SF Symbols）はリポジトリに入れないので、緑の四角の見本で確かめる
+        import tempfile
+        from pathlib import Path
+
+        from PIL import Image
+
+        with tempfile.TemporaryDirectory() as directory:
+            Image.new("RGBA", (40, 40), (0, 255, 0, 255)).save(Path(directory) / "reset.png")
+            icons = gauge.load_icons(directory)
+        self.assertIn("reset", icons)
+        s = 320 / pace.HEIGHT
+        with_mark = pace.render(snapshot(), NOW, size=(480, 320), icons=icons)
+        plain = pace.render(snapshot(), NOW, size=(480, 320))
+        baseline = round((pace.ROWS[0] + pace.LINE[0]) * s)
+        row = range(round(pace.MARGIN * s), round(pace.MARGIN * s) + 14)
+        band = range(baseline - 14, baseline)
+        self.assertTrue(any(near(with_mark.getpixel((x, y)), (0, 255, 0), 40) for x in row for y in band))
+        self.assertFalse(any(near(plain.getpixel((x, y)), (0, 255, 0), 40) for x in row for y in band))
+        # 「リセット済み」は文字のまま（記号を出さない）
+        done = Snapshot((Meter("5時間", 26.0, NOW - timedelta(minutes=1)), Meter("週次", 74.0, NOW + timedelta(days=3))), NOW)
+        image = pace.render(done, NOW, size=(480, 320), icons=icons)
+        self.assertFalse(any(near(image.getpixel((x, y)), (0, 255, 0), 40) for x in row for y in band))

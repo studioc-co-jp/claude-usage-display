@@ -17,7 +17,7 @@ from datetime import datetime
 from PIL import Image, ImageDraw
 
 from . import gauge
-from .gauge import BACKGROUND, DARK_TRACK_MIX, LABEL, ORANGE, SECONDARY, _mix, rounded, tint
+from .gauge import BACKGROUND, DARK_TRACK_MIX, LABEL, ORANGE, SECONDARY, _mix, paste_mark, rounded, tint
 from .render import font
 from .usage import Meter, Snapshot
 
@@ -38,6 +38,8 @@ BAR = (156, 212)     # 棒の上端と下端
 LINE = (284, 50)     # 下の行の基準線・大きさ（収まらなければ LINE_MIN まで縮める）
 LINE_MIN = 36
 LINE_GAP = 32        # 下の行の、リセットと残り時間の間に残す幅
+RESET_MARK = 1.0     # リセットの記号の一辺（下の行の字の大きさに対する比）
+RESET_GAP = 0.3      # 記号と時刻の間（同じく比）
 # 見出しの右の時刻の大きさ（3.5 インチの寸法）。となりのこの Mac の状態の画面（monitor_screen の横置き、16）に
 # そろえる（2026-11-03 ユーザーの指示。ゲージ型の画面の 3.5 インチの既定は 13 で、並べると小さく見えた）。
 # 5.2 インチでは 36 px で、それまでと同じ
@@ -79,15 +81,25 @@ def render(snapshot: Snapshot | None, now: datetime, status: str | None = None,
     gauge._header(image, draw, layout, gauge.HEADER_BASELINE, "Claude Code", snapshot, status,
                   (icons or {}).get("claude"), STAMP)
     # 下の行（リセットと残り時間）は、2 段とも左右の間に LINE_GAP を残して収まる大きさにそろえる。寸法を高さの比で
-    # 縮めるので、横の狭い 3.5 インチ（3:2）では 50 のままだと週次の日時と残り時間がくっついた（2026-11-03）
-    lines = [(_reset_text(when), remain) for when, remain in (gauge.reset_lines(m.resets_at, now) for m in meters)]
+    # 縮めるので、横の狭い 3.5 インチ（3:2）では 50 のままだと週次の日時と残り時間がくっついた（2026-11-03）。
+    # アイコンのフォルダに reset.png があれば、「リセット」の文字の代わりにその記号を時刻の左に出す（2026-11-04、
+    # ユーザーの指示。「リセット済み」は文字のまま）
+    mark = (icons or {}).get("reset")
+    lines = []
+    for when, remain in (gauge.reset_lines(m.resets_at, now) for m in meters):
+        with_mark = mark is not None and not when.startswith("リセット")
+        lines.append((with_mark, when if with_mark else _reset_text(when), remain))
+
+    def lead(size: int, with_mark: bool) -> float:
+        return size * (RESET_MARK + RESET_GAP) if with_mark else 0  # 記号とその右の間の幅
+
     line_size = sized(LINE[1])
     while line_size > sized(LINE_MIN) and any(
-            font(line_size, 6).getlength(a) + font(line_size, 6).getlength(b) > right - left - LINE_GAP * s
-            for a, b in lines):
+            lead(line_size, m) + font(line_size, 6).getlength(a) + font(line_size, 6).getlength(b)
+            > right - left - LINE_GAP * s for m, a, b in lines):
         line_size -= 1
     line_font = font(line_size, 6)
-    for meter, (reset_text, remain), top in zip(meters, lines, ROWS):
+    for meter, (with_mark, reset_text, remain), top in zip(meters, lines, ROWS):
         draw.text((left, (top + NAME[0]) * s), meter.label, font=font(sized(NAME[1]), 6), fill=LABEL, anchor="ls")
         baseline = (top + NUMBER[0]) * s
         if meter.percent is None:
@@ -99,6 +111,8 @@ def render(snapshot: Snapshot | None, now: datetime, status: str | None = None,
                       font=rounded(sized(NUMBER[1])), fill=LABEL, anchor="rs")
         baseline = (top + LINE[0]) * s
         # リセットと残り時間は、大きさも太さも同じ（2026-11-03、残り時間を W3 にしていたら小さく見えるとユーザーが指摘）
-        draw.text((left, baseline), reset_text, font=line_font, fill=LABEL, anchor="ls")
+        if with_mark:  # 記号の縦の中心を、数字の字の高さの中ほどにそろえる
+            paste_mark(image, mark, left, baseline - line_size * 0.36, round(line_size * RESET_MARK))
+        draw.text((left + lead(line_size, with_mark), baseline), reset_text, font=line_font, fill=LABEL, anchor="ls")
         draw.text((right, baseline), remain, font=line_font, fill=LABEL, anchor="rs")
     return image
