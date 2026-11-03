@@ -145,10 +145,12 @@ LANDSCAPE_LARGE = replace(
     # 小見出しから 13 px、しきい値の字と「直近 24 時間」の字の間は約 35 px
     # 続けて「サーバー」の小見出しを消し、リングの上端を 140→128 px（異常の 2 行の帯の下端 121.5 px の下）に上げて、
     # 外径 228→240 px・数字 81→86 px にした（同日、ユーザーの指示）。名前・しきい値の位置は変えていない
-    ring=(0, _px(248), _px(120), _px(26)), label=(0, _px(408), "ms", 14), number=(0, _px(278), 38, 0, True),
-    threshold=(0, _px(438), "ms", 11), dividers=(),
-    headings=((_px(60), _px(498), "直近 24 時間（1 時間ごと）", 10, SMALL_WEIGHT, "ls"),),
-    counter_rows=_CounterRows(top=_px(504), height=_px(108), left=_px(60), right=_px(1220), baseline=_px(68),
+    # 続けて件数の行の間の罫線を消し（2026-11-04）、行の高さを 108→80 に詰めた分で、リングを外径 240→268 px・
+    # 太さ 26→29 px・数字 86→97 px にした（同日、ユーザーの指示）。リングの上端 128 px と画面の下の余白 32 px は変えていない
+    ring=(0, _px(262), _px(134), _px(29)), label=(0, _px(436), "ms", 14), number=(0, _px(296), 43, 0, True),
+    threshold=(0, _px(466), "ms", 11), dividers=(),
+    headings=((_px(60), _px(526), "直近 24 時間（1 時間ごと）", 10, SMALL_WEIGHT, "ls"),),
+    counter_rows=_CounterRows(top=_px(532), height=_px(80), left=_px(60), right=_px(1220), baseline=_px(68),
                               spark=(_px(330), _px(560), _px(52), _px(76)), label_size=15, number_size=22,
                               unit_size=12))
 

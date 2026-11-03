@@ -107,7 +107,8 @@ class MonitorScreenTest(unittest.TestCase):
         _, cy, radius, width = large.ring
         xs = [x for x, _ in large.cells]
         self.assertEqual(len(xs), 4)
-        self.assertTrue(all(b - a > 2 * radius + 20 for a, b in zip(xs, xs[1:])))
+        # 隣のリングとの間は 5.2 インチで 30 px 以上（2026-11-04 にリングを外径 268 px にして 32 px）
+        self.assertTrue(all((b - a - 2 * radius) * large.k >= 30 for a, b in zip(xs, xs[1:])))
         # リングとしきい値の字は「直近 24 時間」の小見出しの上に収まる（上下のまとまりの間の罫線は 2026-11-03 に消した）
         self.assertEqual(large.dividers, ())
         caption_x, caption_y, _caption, caption_size, _w, _a = large.headings[-1]  # 「直近 24 時間」
