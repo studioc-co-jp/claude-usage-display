@@ -221,7 +221,7 @@ scripts/install-launch-agent.sh --device 5.2 --gemini            # 常駐に登�
 
 **ロゴの画像はこのリポジトリに入れていません。**Anthropic の [Trademark Guidelines](https://www.anthropic.com/legal/trademark-guidelines)（2024-08-01 発効）は、ロゴなどの商標を、Anthropic が許可し事前に承認した資料でだけ使えるとし、色・比率などの改変も認めていません。Google の [商標の指針](https://partnermarketinghub.withgoogle.com/brands/google/trademarks-and-terms/trademark-guidelines-for-proper-usage/) も、Google が承認した素材だけを使うこと、製品のアイコンをまねないことを求めています。どちらにも、個人で使う場合の例外は書かれていません。アイコンを使うときは画像を自分で用意し、手元のディスプレイに出すだけにしてください。ロゴの写った画面の写真や画像を公開するときは、各社の指針に従ってください。README の画像は `--icons` を付けずに作っています。
 
-同じフォルダに `reset.png`（白一色・背景透明）を置くと、5 時間と週次の横棒の画面（`--theme pace`）で、「リセット」の文字の代わりにその記号を時刻の左に出します（無ければ文字のまま）。この Mac では、macOS に内蔵の SF Symbols の `arrow.circlepath` を書き出して使っています。**この画像もリポジトリに入れていません。**Xcode and Apple SDKs Agreement の 2.10「System-Provided Images」は、SF Symbols などを、Apple の製品のそのシステムで動くアプリを作る目的にだけ使用を許しているためです。
+同じフォルダに `reset.png`（白一色・背景透明）を置くと、5 時間と週次の横棒の画面（`--theme pace`）で、「リセット」の文字の代わりにその記号を時刻の左に出します（無ければ文字のまま）。この Mac では、macOS に内蔵の SF Symbols の `arrow.counterclockwise` を書き出して使っています。**この画像もリポジトリに入れていません。**Xcode and Apple SDKs Agreement の 2.10「System-Provided Images」は、SF Symbols などを、Apple の製品のそのシステムで動くアプリを作る目的にだけ使用を許しているためです。
 
 ## サーバーの状態の画面（monitor）
 
