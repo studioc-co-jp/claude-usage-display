@@ -135,6 +135,15 @@ class MonitorScreenTest(unittest.TestCase):
         number_row = [image.getpixel((x, round((rows.top + rows.baseline - 8) * k))) for x in range(1050, 1180)]
         self.assertTrue(any(near(p, RED, 30) for p in number_row))
 
+    def test_no_line_between_the_counter_rows(self):
+        # 2026-11-04、5xx エラーと PHP エラーの行の間の罫線を消した（ユーザーの指示）。行の境目の高さは黒だけ
+        cfg = config(counters=COUNTERS)
+        st = status_with_counters()
+        image = ms.render(st, sm.assess(st, cfg, NOW), cfg, layout=ms.LANDSCAPE_LARGE)
+        k, rows = ms.LANDSCAPE_LARGE.k, ms.LANDSCAPE_LARGE.counter_rows
+        y = round((rows.top + rows.height) * k)
+        self.assertTrue(all(image.getpixel((x, y)) == BACKGROUND for x in range(round(rows.left * k), round(rows.right * k))))
+
     def test_counter_alert_turns_the_screen_red(self):
         # 2026-11-03、5xx・PHP エラーが警報の条件（5 分間の合計が alert_at 以上）を満たしたら画面全体を赤にする
         cfg = config(counters=COUNTERS, large_alerts=True)

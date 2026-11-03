@@ -451,13 +451,12 @@ def render(status: ServerStatus | None, assessment: Assessment | None, config: M
             continue
         draw.text(at(hx, hy), text, font=font(sized(size), weight), fill=faint, anchor=anchor)
 
-    # 件数の行: 左に名前、右に直近 24 時間の件数（警報の条件を満たした時間があれば赤）
+    # 件数の行: 左に名前、右に直近 24 時間の件数（警報の条件を満たした時間があれば赤）。行の間の罫線は、
+    # ユーザーの指示「5xx エラー、PHP エラーの間の罫線不要」で描かない（2026-11-04）
     if rows is not None:
         for index, spec in enumerate(counter_specs):
             counter = counters[index] if counters else None
             top = rows.top + rows.height * index
-            if index:
-                draw.line((*at(rows.left, top), *at(rows.right, top)), fill=divider, width=sized(1))
             strong = WHITE if (not red or spec.label in alerting) else faint
             baseline = top + rows.baseline
             draw.text(at(rows.left, baseline), spec.label, font=font(sized(rows.label_size), 6), fill=strong,
