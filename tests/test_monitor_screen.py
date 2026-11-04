@@ -125,8 +125,9 @@ class MonitorScreenTest(unittest.TestCase):
         st = status_with_counters(hourly_5xx=(0,) * 21 + (1, 3, 12), alarmed_5xx=(False,) * 23 + (True,))
         image = ms.render(st, sm.assess(st, cfg, NOW), cfg, layout=ms.LANDSCAPE_LARGE)
         k, rows = ms.LANDSCAPE_LARGE.k, ms.LANDSCAPE_LARGE.counter_rows
-        spark_x, _, spark_h, bottom = rows.spark
-        spark_w = ms._spark_width(rows, st.counters, len(st.counters), k)
+        bottom = rows.spark[2]
+        spark_x, spark_right = ms._spark_span(rows, COUNTERS, st.counters, k)
+        spark_w = spark_right - spark_x
         # 最後の時間（警報の条件を満たした）の棒は赤、その前の時間の棒は白
         y = round((rows.top + bottom - 2) * k)
         last = round((spark_x + spark_w * 23.5 / 24) * k)
@@ -153,12 +154,13 @@ class MonitorScreenTest(unittest.TestCase):
         st = status_with_counters()
         image = ms.render(st, sm.assess(st, cfg, NOW), cfg, layout=ms.LANDSCAPE_LARGE)
         k, rows = ms.LANDSCAPE_LARGE.k, ms.LANDSCAPE_LARGE.counter_rows
+        spark_x = ms._spark_span(rows, COUNTERS, st.counters, k)[0]
 
         def runs(index):
             """名前の欄の、字のある列の連なり（左端・右端）。"""
             baseline = round((rows.top + rows.height * index + rows.baseline) * k)
             inked = [any(min(image.getpixel((x, y))) > 120 for y in range(baseline - 30, baseline + 4))
-                     for x in range(round(rows.left * k) - 4, round(rows.spark[0] * k) - 4)]
+                     for x in range(round(rows.left * k) - 4, round(spark_x * k) - 4)]
             found, start = [], None
             for x, ink in enumerate(inked + [False]):
                 if ink and start is None:
@@ -176,26 +178,33 @@ class MonitorScreenTest(unittest.TestCase):
         self.assertLessEqual(abs(tail_start(first) - tail_start(second)), 1)
         self.assertLessEqual(abs(first[0][0] - second[0][0]), 3)  # 左端もそろったまま（字の左の余白の差だけ）
 
-    def test_spark_ends_a_fixed_gap_before_the_widest_number(self):
-        # 2026-11-04、「横棒の後ろの件数の前の空きが気になる」（ユーザーの指示）。棒グラフの 0 の線の右端を、2 行の件数の
-        # 数字の左端のうち左のほうから 40 ピクセル（5.2 インチ）の所にする。2 行の右端はそろい、桁が増えると縮む
+    def test_spark_keeps_the_same_gap_to_the_label_and_the_number(self):
+        # 2026-11-04、「横棒の後ろの件数の前の空きが気になる」「エラーの右隙間と件数の左隙間が合ってない」（ユーザーの
+        # 指示）。棒グラフの 0 の線の両端を、名前の字の右端・件数の数字の字の左端から、同じ 40 ピクセル（5.2 インチ）
+        # あけた所にする。2 行の両端はそろい、件数の桁が増えると右端が縮む
         cfg = config(counters=COUNTERS)
         k, rows = ms.LANDSCAPE_LARGE.k, ms.LANDSCAPE_LARGE.counter_rows
         ends = {}
         for total in (2, 1234):
             st = status_with_counters(hourly_5xx=(0,) * 23 + (total,))
             image = ms.render(st, sm.assess(st, cfg, NOW), cfg, layout=ms.LANDSCAPE_LARGE)
-            line_ends = []
+            spans, gaps = [], []
             for index in range(2):
-                y = round((rows.top + rows.height * index + rows.spark[3]) * k) - 1  # 0 の線
-                line_ends.append(max(x for x in range(round(rows.spark[0] * k), 1280)
-                                     if image.getpixel((x, y)) != BACKGROUND))
-            self.assertLessEqual(abs(line_ends[0] - line_ends[1]), 1)  # 2 行の右端はそろう
-            baseline = round((rows.top + rows.baseline) * k) - 8
-            number_left = min(x for x in range(line_ends[0] + 2, 1280)
-                              if any(min(image.getpixel((x, y))) > 120 for y in range(baseline - 20, baseline + 4)))
-            self.assertAlmostEqual(number_left - line_ends[0], 40, delta=6)  # 字の左の余白の分だけ広い
-            ends[total] = line_ends[0]
+                top = rows.top + rows.height * index
+                y = round((top + rows.spark[2]) * k) - 1  # 0 の線
+                line = [x for x in range(round(rows.right * k)) if image.getpixel((x, y)) != BACKGROUND]
+                baseline = round((top + rows.baseline) * k)
+                text = [x for x in range(1280)
+                        if any(min(image.getpixel((x, yy))) > 120 for yy in range(baseline - 30, baseline + 4))]
+                spans.append((line[0], line[-1]))
+                gaps.append((line[0] - max(x for x in text if x < line[0]) - 1,
+                             min(x for x in text if x > line[-1]) - line[-1] - 1))
+            self.assertEqual(spans[0], spans[1])  # 2 行の両端はそろう
+            for left_gap, _ in gaps:
+                self.assertAlmostEqual(left_gap, 40, delta=2)
+            # 右は、件数の幅の大きい行で 40（もう一方の行は、その分広い。1 桁どうしでも「2」は「0」より 3 ピクセル広い）
+            self.assertAlmostEqual(min(right for _, right in gaps), 40, delta=2)
+            ends[total] = spans[0][1]
         self.assertLess(ends[1234], ends[2] - 80)  # 4 桁は 1 桁より約 100 ピクセル短い
 
     def test_counter_alert_turns_the_screen_red(self):
