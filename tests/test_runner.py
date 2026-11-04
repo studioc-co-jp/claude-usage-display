@@ -122,8 +122,8 @@ class RunnerTest(unittest.TestCase):
         ])
         self.assertIsNone(runner.status)
 
-    def test_missing_session_is_shown_as_a_notice_and_logged_once(self):
-        # 2026-11-02、Ultra の 5 時間の制限が外れたら気づけるよう、5 時間の枠が無い応答は見出しに注意として出す
+    def test_missing_session_is_logged_once_and_not_shown_in_the_header(self):
+        # 2026-11-02 から 5 時間の枠が無い応答を見出しに出していたが、2026-11-04 にユーザーの指示でログだけにした
         now = datetime.now(timezone.utc)
         weekly = (Meter("週次", 9, now), Meter("Fable週次", 0, now))
         with_session = Snapshot((Meter("5時間", 16, now), *weekly), now, ("session・is_active", "weekly_all"))
@@ -132,11 +132,11 @@ class RunnerTest(unittest.TestCase):
         with mock.patch.object(cli, "fetch_snapshot", side_effect=[with_session, without, without, with_session]), \
                 mock.patch.object(cli.time, "monotonic", side_effect=[0.0, 1000.0, 2000.0, 3000.0]), \
                 self.assertLogs(cli.log, "INFO") as logs:
-            notices = []
+            missing = []
             for _ in range(4):
                 runner._fetch_if_due()
-                notices.append(runner.notice)
-        self.assertEqual(notices, [None, cli.NO_SESSION, cli.NO_SESSION, None])
+                missing.append(runner.session_missing)
+        self.assertEqual(missing, [False, True, True, False])
         self.assertEqual([r.getMessage() for r in logs.records], [
             "利用枠の API の枠: session・is_active、weekly_all",
             "利用枠の API の枠: weekly_all",
@@ -146,13 +146,14 @@ class RunnerTest(unittest.TestCase):
         ])
         self.assertIsNone(runner.status)  # 取得の失敗ではない
 
-    def test_notice_is_drawn_in_the_header_and_fetch_errors_come_first(self):
+    def test_missing_session_does_not_change_the_header(self):
+        # 見出しに出すのは取得の失敗だけ（5 時間の枠が無いことは出さない）
         runner = cli.Runner(make_args())
-        runner.notice = cli.NO_SESSION
+        runner.session_missing = True
         draw = mock.Mock(wraps=cli.THEMES["gauge"])
         with mock.patch.dict(cli.THEMES, {"gauge": draw}):
             runner._draw((480, 320))
-            self.assertEqual(draw.call_args.args[2], cli.NO_SESSION)
+            self.assertIsNone(draw.call_args.args[2])
             runner.status = "通信できません"
             runner._draw((480, 320))
             self.assertEqual(draw.call_args.args[2], "通信できません")
