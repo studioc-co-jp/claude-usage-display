@@ -538,6 +538,7 @@ scripts/uninstall-launch-agent.sh                                 # 自動起動
 - **観測**: 常駐のログで、2026-11-03 15:47:50 の取得から「利用枠の API の枠: weekly_all・is_active、weekly_scoped（Fable）」となり、`session` の項目そのものが `limits` から消えた（その直前の記録は同日 08:09 の「session、weekly_all・is_active、weekly_scoped（Fable）」）。同時に警告「5 時間の枠が利用枠の API の応答にありません（limits に session が無いか、使用率が空）」が出て、Claude の画面の見出しに「5時間の枠がなくなりました」が出た（§5 の 12 の「気づくための仕組み」が働いた）。2026-11-04 07:42 の時点でも戻っていない
 - §5 の 12 で「そのときに確かめる」としていた、制限が外れた後の API の形は、**`session` の項目が `limits` から消える**だった（`is_active` だけが変わる形ではなかった）。公式の確かめ方（claude.ai の Settings > Usage に Current session が無いこと）は、こちらからは画面を見られないので、ユーザーに伝えた
 - **ユーザーの決定**: 画面は「いまのまま」（5 時間の段は「--」のまま、見出しの注意も出し続ける。枠が戻れば値が出る）。週次だけにする案・Fable 週次を代わりに出す案は選ばれなかった
+- **ユーザーの予定**（2026-11-04）: Ultra は解約し、来月から Max に戻る。5 時間の段はそのまま残す。Max に戻って `limits` に `session` が戻れば、常駐は次の取得（2 分以内）で 5 時間の値を出し、見出しの注意を消してログに「…戻りました」を残す（`_watch_session`。テスト `test_missing_session_is_shown_as_a_notice_and_logged_once`）。プログラムの変更も常駐の起動し直しも要らない
 
 ## 5. 残っている作業（上から順に）
 
