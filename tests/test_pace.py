@@ -56,10 +56,27 @@ class PaceTest(unittest.TestCase):
     def test_no_line_between_the_rows(self):
         # 2026-11-03、2 段の間の罫線を消した（ユーザーの指示）。1 段目の下の行と 2 段目の名前の間は黒だけ
         image = pace.render(snapshot(), NOW, size=SIZE)
-        gap = range(pace.ROWS[0] + pace.LINE[0] + 14, pace.ROWS[1] + pace.NAME[0] - pace.NAME[1])
+        gap = range(pace.ROWS[0] + pace.LINE[0] + 14,
+                    pace.ROWS[1] + min(pace.NAME[0] - pace.NAME[1], pace.NUMBER[0] - pace.NUMBER[1]))
         self.assertGreater(len(gap), 10)
         self.assertTrue(all(image.getpixel((x, y)) == gauge.BACKGROUND
                             for y in gap for x in range(pace.MARGIN, SIZE[0] - pace.MARGIN, 8)))
+
+    def test_name_sits_right_above_the_bar(self):
+        # 2026-11-04、「5時間・週次のテキストをバーの真上に」（ユーザーの指示）。名前は数字と同じ基準線に載せ、
+        # 3.5 インチで、名前と棒の間を、棒と下の行の間とほぼ同じにする
+        self.assertEqual(pace.NAME[0], pace.NUMBER[0])
+        image = pace.render(snapshot(), NOW, size=(480, 320))
+        s = 320 / pace.HEIGHT
+        left = round(pace.MARGIN * s)
+        for top in pace.ROWS:
+            bar_top, bar_bottom = round((top + pace.BAR[0]) * s), round((top + pace.BAR[1]) * s)
+            name = [y for y in range(round(top * s), bar_top)
+                    if any(min(image.getpixel((x, y))) > 120 for x in range(left, left + 60))]
+            line = [y for y in range(bar_bottom + 1, 320)
+                    if any(min(image.getpixel((x, y))) > 120 for x in range(left, 470))]
+            above, below = bar_top - name[-1] - 1, line[0] - bar_bottom
+            self.assertLessEqual(abs(above - below), 3)
 
     def test_missing_values_and_fetch_errors_still_render(self):
         gone = Snapshot((Meter("5時間", None, None), Meter("週次", 9, NOW + timedelta(days=6))), NOW)
