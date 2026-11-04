@@ -120,6 +120,20 @@ class MonitorScreenTest(unittest.TestCase):
         rows = large.counter_rows
         self.assertLessEqual(rows.top + rows.height * 2, 320)
 
+    def test_large_caption_sits_closer_to_the_counter_rows(self):
+        # 2026-11-04、「直近 24 時間（1 時間ごと）のテキストをもう少し下に」（ユーザーの指示）。小見出しは下の件数の行の
+        # 見出しなので、しきい値との間（45 ピクセル）より、「5xx エラー」との間（32 ピクセル）を狭くする
+        cfg = config(counters=COUNTERS)
+        st = status_with_counters()
+        image = ms.render(st, sm.assess(st, cfg, NOW), cfg, layout=ms.LANDSCAPE_LARGE)
+        inked = [y for y in range(440, 620) if any(min(image.getpixel((x, y))) > 60 for x in range(60, 400))]
+        starts = [inked[0]] + [b for a, b in zip(inked, inked[1:]) if b - a > 1]
+        ends = [a for a, b in zip(inked, inked[1:]) if b - a > 1]
+        threshold_end, caption, caption_end, label = ends[0], starts[1], ends[1], starts[2]
+        above, below = caption - threshold_end - 1, label - caption_end - 1
+        self.assertLess(below, above)
+        self.assertGreaterEqual(below, 24)  # 件数の行にくっつけない
+
     def test_large_threshold_keeps_a_gap_below_the_label(self):
         # 2026-11-04、「項目名と下のしきい値の間をもう少し隙間空けて」（ユーザーの指示）。字の形の間は 5→11 ピクセル
         cfg = config(counters=COUNTERS)

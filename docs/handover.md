@@ -570,6 +570,13 @@ scripts/uninstall-launch-agent.sh                                 # 自動起動
 - **見本**: リングと名前は動かさず（リングとの間が狭いため）、しきい値だけを 6 px（案 A。間 11 px・下との間 32 px）と 10 px（案 B。15 px・28 px）下げた 2 案を見せ、**ユーザーが案 A（推奨）を選んだ**
 - **入れたこと**: `monitor_screen.LANDSCAPE_LARGE.threshold` の基準線を `_px(466)`→`_px(472)`。しきい値は 450〜474 px。テスト `test_large_threshold_keeps_a_gap_below_the_label`（CPU の列で、名前としきい値の字の間が 10 px 以上）。README の `monitor-1280x720.png` を作り直し、見出しより下で変わったのはしきい値の行だけであることを確かめた。3.5 インチの画面（`LANDSCAPE`・`PORTRAIT`）は変えていない
 
+### 4-33. サーバーの状態の画面（5.2 インチ）の「直近 24 時間（1 時間ごと）」を、件数の行に寄せた（2026-11-04）
+
+- **ユーザーの指示**: 「rikkama.jp モニター: 直近 24 時間（1 時間ごと）のテキストをもう少し下に移動して」
+- **測ったこと**（5.2 インチの画素、字の形、左の名前の欄）: しきい値との間 33 px、「5xx エラー」との間 44 px で、下の件数の行の見出しなのに、しきい値の側に寄っていた
+- **見本**: 8 px 下げる案 A（上 41 px・下 36 px）と 12 px 下げる案 B（上 45 px・下 32 px）を見せ、上より下を狭くして件数の行の見出しだと分かる案 B をすすめ、**ユーザーが案 B を選んだ**
+- **入れたこと**: `LANDSCAPE_LARGE.headings` の基準線を `_px(526)`→`_px(538)`。テスト `test_large_caption_sits_closer_to_the_counter_rows`（下の間が上の間より狭く、24 px 以上）。README の `monitor-1280x720.png` を作り直し、見出しより下で変わったのは小見出しの範囲（507〜541 px）だけであることを確かめた
+
 ## 5. 残っている作業（上から順に）
 
 1〜5 は 2026-10-05 に終えた（README.md、CLAUDE.md、requirements.txt と .gitignore、自動起動の作成と登録、git の初期化と push）。
