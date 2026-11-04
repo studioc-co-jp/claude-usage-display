@@ -125,7 +125,8 @@ class MonitorScreenTest(unittest.TestCase):
         st = status_with_counters(hourly_5xx=(0,) * 21 + (1, 3, 12), alarmed_5xx=(False,) * 23 + (True,))
         image = ms.render(st, sm.assess(st, cfg, NOW), cfg, layout=ms.LANDSCAPE_LARGE)
         k, rows = ms.LANDSCAPE_LARGE.k, ms.LANDSCAPE_LARGE.counter_rows
-        spark_x, spark_w, spark_h, bottom = rows.spark
+        spark_x, _, spark_h, bottom = rows.spark
+        spark_w = ms._spark_width(rows, st.counters, len(st.counters), k)
         # 最後の時間（警報の条件を満たした）の棒は赤、その前の時間の棒は白
         y = round((rows.top + bottom - 2) * k)
         last = round((spark_x + spark_w * 23.5 / 24) * k)
@@ -144,6 +145,58 @@ class MonitorScreenTest(unittest.TestCase):
         k, rows = ms.LANDSCAPE_LARGE.k, ms.LANDSCAPE_LARGE.counter_rows
         y = round((rows.top + rows.height) * k)
         self.assertTrue(all(image.getpixel((x, y)) == BACKGROUND for x in range(round(rows.left * k), round(rows.right * k))))
+
+    def test_counter_labels_align_the_last_word(self):
+        # 2026-11-04、「エラーの文字が上下で揃っていない」（ユーザーの指示）。名前の最後の空白の後ろ（「エラー」）の
+        # 左端を行の間でそろえる。「5xx」は「PHP」より狭いので、そろえないと 10 ピクセルずれる
+        cfg = config(counters=COUNTERS)
+        st = status_with_counters()
+        image = ms.render(st, sm.assess(st, cfg, NOW), cfg, layout=ms.LANDSCAPE_LARGE)
+        k, rows = ms.LANDSCAPE_LARGE.k, ms.LANDSCAPE_LARGE.counter_rows
+
+        def runs(index):
+            """名前の欄の、字のある列の連なり（左端・右端）。"""
+            baseline = round((rows.top + rows.height * index + rows.baseline) * k)
+            inked = [any(min(image.getpixel((x, y))) > 120 for y in range(baseline - 30, baseline + 4))
+                     for x in range(round(rows.left * k) - 4, round(rows.spark[0] * k) - 4)]
+            found, start = [], None
+            for x, ink in enumerate(inked + [False]):
+                if ink and start is None:
+                    start = x
+                elif not ink and start is not None:
+                    found.append((start, x))
+                    start = None
+            return found
+
+        def tail_start(found):
+            gaps = [(found[i + 1][0] - found[i][1], found[i + 1][0]) for i in range(len(found) - 1)]
+            return max(gaps)[1]  # いちばん広い隙間（空白）の右の字の左端
+
+        first, second = runs(0), runs(1)
+        self.assertLessEqual(abs(tail_start(first) - tail_start(second)), 1)
+        self.assertLessEqual(abs(first[0][0] - second[0][0]), 3)  # 左端もそろったまま（字の左の余白の差だけ）
+
+    def test_spark_ends_a_fixed_gap_before_the_widest_number(self):
+        # 2026-11-04、「横棒の後ろの件数の前の空きが気になる」（ユーザーの指示）。棒グラフの 0 の線の右端を、2 行の件数の
+        # 数字の左端のうち左のほうから 40 ピクセル（5.2 インチ）の所にする。2 行の右端はそろい、桁が増えると縮む
+        cfg = config(counters=COUNTERS)
+        k, rows = ms.LANDSCAPE_LARGE.k, ms.LANDSCAPE_LARGE.counter_rows
+        ends = {}
+        for total in (2, 1234):
+            st = status_with_counters(hourly_5xx=(0,) * 23 + (total,))
+            image = ms.render(st, sm.assess(st, cfg, NOW), cfg, layout=ms.LANDSCAPE_LARGE)
+            line_ends = []
+            for index in range(2):
+                y = round((rows.top + rows.height * index + rows.spark[3]) * k) - 1  # 0 の線
+                line_ends.append(max(x for x in range(round(rows.spark[0] * k), 1280)
+                                     if image.getpixel((x, y)) != BACKGROUND))
+            self.assertLessEqual(abs(line_ends[0] - line_ends[1]), 1)  # 2 行の右端はそろう
+            baseline = round((rows.top + rows.baseline) * k) - 8
+            number_left = min(x for x in range(line_ends[0] + 2, 1280)
+                              if any(min(image.getpixel((x, y))) > 120 for y in range(baseline - 20, baseline + 4)))
+            self.assertAlmostEqual(number_left - line_ends[0], 40, delta=6)  # 字の左の余白の分だけ広い
+            ends[total] = line_ends[0]
+        self.assertLess(ends[1234], ends[2] - 80)  # 4 桁は 1 桁より約 100 ピクセル短い
 
     def test_counter_alert_turns_the_screen_red(self):
         # 2026-11-03、5xx・PHP エラーが警報の条件（5 分間の合計が alert_at 以上）を満たしたら画面全体を赤にする

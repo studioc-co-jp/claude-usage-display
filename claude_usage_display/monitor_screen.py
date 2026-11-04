@@ -46,7 +46,7 @@ class _CounterRows:
     left: float
     right: float
     baseline: float                         # 行の上端から、名前と件数の基準線まで
-    spark: tuple[float, float, float, float]  # 棒グラフの左端・幅・高さ・下端（行の上端から）
+    spark: tuple[float, float, float, float]  # 棒グラフの左端・件数の数字との間・高さ・下端（行の上端から）
     label_size: int
     number_size: int
     unit_size: int
@@ -150,9 +150,32 @@ LANDSCAPE_LARGE = replace(
     ring=(0, _px(262), _px(134), _px(29)), label=(0, _px(436), "ms", 14), number=(0, _px(296), 43, 0, True),
     threshold=(0, _px(466), "ms", 11), dividers=(),
     headings=((_px(60), _px(526), "直近 24 時間（1 時間ごと）", 10, SMALL_WEIGHT, "ls"),),
+    # 件数の行の棒グラフは、右端を件数の数字の左から 40 px の所にする（2026-11-04、ユーザーの指示「横棒の後ろの件数の
+    # 前の空きが気になる」。見本の 2 案から選んだ。それまでは幅 560 px の固定で、1 桁の件数との間が約 265 px 空いていた）
     counter_rows=_CounterRows(top=_px(532), height=_px(80), left=_px(60), right=_px(1220), baseline=_px(68),
-                              spark=(_px(330), _px(560), _px(52), _px(76)), label_size=15, number_size=22,
+                              spark=(_px(330), _px(40), _px(52), _px(76)), label_size=15, number_size=22,
                               unit_size=12))
+
+
+def _counter_numbers(rows: _CounterRows, counters, count: int, k: float) -> list[tuple[str, float]]:
+    """件数の行の数字の文言と右端（3.5 インチの寸法）。値が無い行は「--」で、「件」を付けない。"""
+    unit = font(_scaled(rows.unit_size, k), SMALL_WEIGHT).getlength("件") / k
+    numbers = []
+    for index in range(count):
+        counter = counters[index] if counters else None
+        numbers.append(("--", rows.right) if counter is None else (f"{counter.total:g}", rows.right - unit - 6 / k))
+    return numbers
+
+
+def _spark_width(rows: _CounterRows, counters, count: int, k: float) -> float:
+    """件数の行の棒グラフの幅（3.5 インチの寸法）。
+
+    右端は、各行の件数の数字の左端のうち左のほうから ``rows.spark`` の間をあけた所。2 行の右端はそろい、件数の桁が
+    増えると縮む。
+    """
+    number_font = rounded(_scaled(rows.number_size, k))
+    left = min(right - number_font.getlength(text) / k for text, right in _counter_numbers(rows, counters, count, k))
+    return left - rows.spark[1] - rows.spark[0]
 
 
 def layout_for(size: tuple[int, int], portrait: bool = False) -> _Layout:
@@ -368,8 +391,9 @@ def render(status: ServerStatus | None, assessment: Assessment | None, config: M
     rows = layout.counter_rows
     counters = status.counters if status else ()
     counter_specs = [c.spec for c in counters] or list(config.counters)
-    if rows is not None:
-        spark_x, spark_w, spark_h, spark_bottom = rows.spark
+    if rows is not None and counter_specs:
+        spark_x, _, spark_h, spark_bottom = rows.spark
+        spark_w = _spark_width(rows, counters, len(counter_specs), k)
         step, one = spark_w / 24, 1 / k  # 1 は画面の 1 ピクセル
         for index, spec in enumerate(counter_specs):
             counter = counters[index] if counters else None
@@ -454,20 +478,29 @@ def render(status: ServerStatus | None, assessment: Assessment | None, config: M
         draw.text(at(hx, hy), text, font=font(sized(size), weight), fill=faint, anchor=anchor)
 
     # 件数の行: 左に名前、右に直近 24 時間の件数（警報の条件を満たした時間があれば赤）。行の間の罫線は、
-    # ユーザーの指示「5xx エラー、PHP エラーの間の罫線不要」で描かない（2026-11-04）
+    # ユーザーの指示「5xx エラー、PHP エラーの間の罫線不要」で描かない（2026-11-04）。
+    # 名前は最後の空白で前後に分け、後ろ（「エラー」）の左端を、前の部分の幅のいちばん大きい行にそろえる（同日、
+    # ユーザーの指示「エラーの文字が上下で揃っていない」。見本の 3 案から選んだ）。空白の無い名前は 1 つのまま描く
     if rows is not None:
+        label_font = font(sized(rows.label_size), 6)
+        heads = [spec.label.rpartition(" ")[0] for spec in counter_specs]
+        tail_x = rows.left + max((length(label_font, head) for head in heads if head), default=0) + length(label_font, " ")
+        unit_font = font(sized(rows.unit_size), SMALL_WEIGHT)
+        numbers = _counter_numbers(rows, counters, len(counter_specs), k)
         for index, spec in enumerate(counter_specs):
             counter = counters[index] if counters else None
             top = rows.top + rows.height * index
             strong = WHITE if (not red or spec.label in alerting) else faint
             baseline = top + rows.baseline
-            draw.text(at(rows.left, baseline), spec.label, font=font(sized(rows.label_size), 6), fill=strong,
-                      anchor="ls")
-            unit_font = font(sized(rows.unit_size), SMALL_WEIGHT)
-            number = "--" if counter is None else f"{counter.total:g}"
+            head, _, tail = spec.label.rpartition(" ")
+            if head:
+                draw.text(at(rows.left, baseline), head, font=label_font, fill=strong, anchor="ls")
+                draw.text(at(tail_x, baseline), tail, font=label_font, fill=strong, anchor="ls")
+            else:
+                draw.text(at(rows.left, baseline), spec.label, font=label_font, fill=strong, anchor="ls")
+            number, number_right = numbers[index]
             if counter is not None:
                 draw.text(at(rows.right, baseline), "件", font=unit_font, fill=faint, anchor="rs")
-            number_right = rows.right - (length(unit_font, "件") + 6 / k if counter is not None else 0)
             alarmed = counter is not None and any(counter.alert_hours)
             draw.text(at(number_right, baseline), number, font=rounded(sized(rows.number_size)),
                       fill=strong if red else (RED if alarmed else LABEL), anchor="rs")
