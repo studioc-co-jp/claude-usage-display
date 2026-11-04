@@ -120,6 +120,20 @@ class MonitorScreenTest(unittest.TestCase):
         rows = large.counter_rows
         self.assertLessEqual(rows.top + rows.height * 2, 320)
 
+    def test_large_threshold_keeps_a_gap_below_the_label(self):
+        # 2026-11-04、「項目名と下のしきい値の間をもう少し隙間空けて」（ユーザーの指示）。字の形の間は 5→11 ピクセル
+        cfg = config(counters=COUNTERS)
+        st = status_with_counters()
+        image = ms.render(st, sm.assess(st, cfg, NOW), cfg, layout=ms.LANDSCAPE_LARGE)
+        k = ms.LANDSCAPE_LARGE.k
+        x0 = round(ms.LANDSCAPE_LARGE.cells[0][0] * k)  # 1 つ目（CPU）の列の中央
+        label_y, threshold_y = ms.LANDSCAPE_LARGE.label[1] * k, ms.LANDSCAPE_LARGE.threshold[1] * k
+        inked = [y for y in range(round(label_y - 40), round(threshold_y + 10))
+                 if any(min(image.getpixel((x, y))) > 60 for x in range(x0 - 90, x0 + 90))]
+        gaps = [b - a - 1 for a, b in zip(inked, inked[1:]) if b - a > 1]
+        self.assertEqual(len(gaps), 1)  # 名前としきい値の 2 つの字の並びの間
+        self.assertGreaterEqual(gaps[0], 10)
+
     def test_counter_rows_show_the_total_and_red_bars_for_alarmed_hours(self):
         cfg = config(counters=COUNTERS)
         st = status_with_counters(hourly_5xx=(0,) * 21 + (1, 3, 12), alarmed_5xx=(False,) * 23 + (True,))
