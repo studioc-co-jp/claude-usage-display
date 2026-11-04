@@ -19,6 +19,9 @@ def near(pixel, color, tolerance=12):
     return all(abs(a - b) <= tolerance for a, b in zip(pixel, color))
 
 
+SESSION, WEEKLY = pace.ORDER.index(0), pace.ORDER.index(1)  # 5時間・週次を出す段（0 が上）
+
+
 def bar_row(index):
     """棒の縦の中ほど（ピクセル）。"""
     return round(pace.ROWS[index] + sum(pace.BAR) / 2)
@@ -29,11 +32,20 @@ class PaceTest(unittest.TestCase):
         image = pace.render(snapshot(), NOW, size=SIZE)
         self.assertEqual(image.size, SIZE)
         left, right = pace.MARGIN, SIZE[0] - pace.MARGIN
-        y = bar_row(0)
+        y = bar_row(SESSION)
         blue = gauge.layout_for(SIZE).blue
         self.assertTrue(near(image.getpixel((round(left + (right - left) * 0.20), y)), blue))  # 26% の手前は塗る
         self.assertFalse(near(image.getpixel((round(left + (right - left) * 0.40), y)), blue))  # 26% より先は地
-        self.assertTrue(near(image.getpixel((round(left + (right - left) * 0.5), bar_row(1))), gauge.ORANGE))  # 74%
+        self.assertTrue(near(image.getpixel((round(left + (right - left) * 0.5), bar_row(WEEKLY))), gauge.ORANGE))  # 74%
+
+    def test_weekly_is_on_top_and_session_below(self):
+        # 2026-11-04、「上が週次、下が 5時間にしたい」（ユーザーの指示）
+        self.assertEqual((WEEKLY, SESSION), (0, 1))
+        image = pace.render(snapshot(), NOW, size=(480, 320))
+        s = 320 / pace.HEIGHT
+        x = round((pace.MARGIN + (1280 - 2 * pace.MARGIN) * 0.5) * 480 / 1280)  # 26% より先、74% より手前
+        self.assertTrue(near(image.getpixel((x, round(bar_row(0) * s))), gauge.ORANGE))  # 上の段は週次の 74%
+        self.assertFalse(near(image.getpixel((x, round(bar_row(1) * s))), gauge.ORANGE))  # 下の段は 5時間の 26%
 
     def test_no_elapsed_mark_or_text(self):
         # 2026-11-03、「時間経過の表記と縦棒は不要」（ユーザーの指示）。棒の上にも名前の右にも白い字・線を出さない
@@ -102,7 +114,8 @@ class PaceTest(unittest.TestCase):
                          Meter("週次", 74.0, NOW + timedelta(days=6, hours=23, minutes=59))), NOW)
         image = pace.render(long, NOW, size=(480, 320))
         s = 320 / pace.HEIGHT
-        top, bottom = round((pace.ROWS[1] + pace.LINE[0] - pace.LINE[1] * 0.8) * s), round((pace.ROWS[1] + pace.LINE[0]) * s)
+        row = pace.ROWS[WEEKLY]
+        top, bottom = round((row + pace.LINE[0] - pace.LINE[1] * 0.8) * s), round((row + pace.LINE[0]) * s)
         inked = [any(min(image.getpixel((x, y))) > 120 for y in range(top, bottom)) for x in range(480)]
         runs, gap = [], 0
         for x in range(round(pace.MARGIN * s), 480 - round(pace.MARGIN * s)):
@@ -139,7 +152,7 @@ class PaceTest(unittest.TestCase):
         s = 320 / pace.HEIGHT
         with_mark = pace.render(snapshot(), NOW, size=(480, 320), icons=icons)
         plain = pace.render(snapshot(), NOW, size=(480, 320))
-        baseline = round((pace.ROWS[0] + pace.LINE[0]) * s)
+        baseline = round((pace.ROWS[SESSION] + pace.LINE[0]) * s)  # 5時間の段（「リセット済み」も 5時間で確かめる）
         row = range(round(pace.MARGIN * s), round(pace.MARGIN * s) + 14)
         band = range(baseline - 14, baseline)
         self.assertTrue(any(near(with_mark.getpixel((x, y)), (0, 255, 0), 40) for x in row for y in band))
