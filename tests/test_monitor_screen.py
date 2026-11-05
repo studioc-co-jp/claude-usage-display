@@ -156,12 +156,14 @@ class MonitorScreenTest(unittest.TestCase):
         bottom = rows.spark[2]
         spark_x, spark_right = ms._spark_span(rows, COUNTERS, st.counters, k)
         spark_w = spark_right - spark_x
-        # 最後の時間（警報の条件を満たした）の棒は赤、その前の時間の棒は白
+        # 最後の時間（警報の条件を満たした）の棒は明るい赤、その前の時間の棒は暗い赤（2026-11-06 に白から変えた）
         y = round((rows.top + bottom - 2) * k)
         last = round((spark_x + spark_w * 23.5 / 24) * k)
         before = round((spark_x + spark_w * 22.5 / 24) * k)
         self.assertTrue(near(image.getpixel((last, y)), RED, 30))
-        self.assertTrue(near(image.getpixel((before, y)), (255, 255, 255), 30))
+        self.assertTrue(near(image.getpixel((before, y)), ms.COUNTER_BAR, 30))
+        self.assertEqual(ms.COUNTER_BAR, (140, 36, 38))
+        self.assertGreater(RED[0] - ms.COUNTER_BAR[0], 100)  # 明るい赤と見分けられる
         # 警報の条件を満たした時間があれば、件数（16）も赤。PHP の行（0 件）は白
         number_row = [image.getpixel((x, round((rows.top + rows.baseline - 8) * k))) for x in range(1050, 1180)]
         self.assertTrue(any(near(p, RED, 30) for p in number_row))
