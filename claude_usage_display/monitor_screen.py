@@ -30,9 +30,6 @@ from .server_monitor import Assessment, MonitorConfig, ServerStatus, warning_tin
 SCALE = 4
 GREEN = (48, 209, 88)  # HIG の Green（ダーク）
 WHITE = (255, 255, 255)
-# 件数の行の棒の色。エラーの件数なので暗い赤 (140, 36, 38) にし、警報の条件を満たした時間は明るい赤（RED）で見分ける
-# （2026-11-06、ユーザーの指示「エラーの棒を赤にしたい」。見本の 2 案から選んだ。それまでは白）。赤の画面では白か薄い色
-COUNTER_BAR = _mix(RED, BACKGROUND, 0.55)
 LOGO_RISE = 5.5  # ロゴの縦の中心を、名前の基準線からこれだけ上げる（利用枠の画面の見出しのアイコンと同じ）
 TITLE_GAP = 8  # 名前と、右の時刻・同じ行の監視の状態との間
 # 下の行が 2 行以上のときの行の間隔（この Mac の状態の画面の CPU の「性能」「効率」。1 行目はしきい値と同じ位置。
@@ -413,7 +410,7 @@ def render(status: ServerStatus | None, assessment: Assessment | None, config: M
             message_left = center - (length(message_font, message) + dot_space) / 2 + dot_space
             shapes.circle(message_left - layout.dot_radius - 5, layout.dot_y, layout.dot_radius,
                           ORANGE if warn else GREEN)
-    # 件数の行の図形（0 の線と 1 時間ごとの棒）。警報の条件を満たした時間の棒は赤（赤の画面では白か薄い色）
+    # 件数の行の図形（0 の線と 1 時間ごとの棒）。棒は赤（赤の画面では白か薄い色）
     rows = layout.counter_rows
     counters = status.counters if status else ()
     counter_specs = [c.spec for c in counters] or list(config.counters)
@@ -431,12 +428,13 @@ def render(status: ServerStatus | None, assessment: Assessment | None, config: M
                 continue
             strong = WHITE if spec.label in alerting else faint
             peak = max(spec.alert_at, *counter.hourly, 1)
-            for hour, (count, alarmed) in enumerate(zip(counter.hourly, counter.alert_hours)):
+            # 棒は、警報の条件を満たしたかに関わらず、すべて赤（2026-11-06、ユーザーの指示「1 件でもあれば調査すべきなので、
+            # 全部同じ赤に」。それまでは、警報の条件を満たした時間だけ赤で、ほかは白。同日にいったん暗い赤にした）
+            for hour, count in enumerate(counter.hourly):
                 if count > 0:
                     height = max(5 * one, spark_h * count / peak)
-                    color = strong if red else (RED if alarmed else COUNTER_BAR)
                     shapes.pill((spark_x + hour * step + 2 * one, bottom - height, spark_x + (hour + 1) * step - 2 * one,
-                                 bottom), color, radius=2 * one)
+                                 bottom), strong if red else RED, radius=2 * one)
     image = shapes.finish()
     draw = ImageDraw.Draw(image)
 
