@@ -38,14 +38,14 @@ class PaceTest(unittest.TestCase):
         self.assertFalse(near(image.getpixel((round(left + (right - left) * 0.40), y)), blue))  # 26% より先は地
         self.assertTrue(near(image.getpixel((round(left + (right - left) * 0.5), bar_row(WEEKLY))), gauge.ORANGE))  # 74%
 
-    def test_weekly_is_on_top_and_session_below(self):
-        # 2026-11-04、「上が週次、下が 5時間にしたい」（ユーザーの指示）
-        self.assertEqual((WEEKLY, SESSION), (0, 1))
+    def test_session_is_on_top_and_weekly_below(self):
+        # 2026-11-06、「5時間、週次に並び替えて」（ユーザーの指示。2026-11-04 に上を週次にしていたのを戻した）
+        self.assertEqual((SESSION, WEEKLY), (0, 1))
         image = pace.render(snapshot(), NOW, size=(480, 320))
         s = 320 / pace.HEIGHT
         x = round((pace.MARGIN + (1280 - 2 * pace.MARGIN) * 0.5) * 480 / 1280)  # 26% より先、74% より手前
-        self.assertTrue(near(image.getpixel((x, round(bar_row(0) * s))), gauge.ORANGE))  # 上の段は週次の 74%
-        self.assertFalse(near(image.getpixel((x, round(bar_row(1) * s))), gauge.ORANGE))  # 下の段は 5時間の 26%
+        self.assertFalse(near(image.getpixel((x, round(bar_row(0) * s))), gauge.ORANGE))  # 上の段は 5時間の 26%
+        self.assertTrue(near(image.getpixel((x, round(bar_row(1) * s))), gauge.ORANGE))  # 下の段は週次の 74%
 
     def test_no_elapsed_mark_or_text(self):
         # 2026-11-03、「時間経過の表記と縦棒は不要」（ユーザーの指示）。棒の上にも名前の右にも白い字・線を出さない
