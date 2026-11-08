@@ -1,0 +1,28 @@
+#!/usr/bin/env bash
+# pre-commit hook（2026-11-08 新設・rikkama-platform 05/159）
+#  1) gitleaks による漏洩検査（staged）。gitleaks が無ければ止める   bypass: SKIP_GITLEAKS=1
+#  2) 秘密の値そのものの照合                                       bypass: SKIP_SECRET_VALUE_CHECK=1
+# 新しい clone では: cp scripts/git-hooks/pre-commit .git/hooks/pre-commit && chmod +x .git/hooks/pre-commit
+if [ "${SKIP_GITLEAKS:-}" != "1" ]; then
+  if ! command -v gitleaks >/dev/null 2>&1; then
+    echo "❌ gitleaks が見つからないため commit を中止しました（brew install gitleaks）"; exit 1
+  fi
+  if ! gitleaks git --staged --redact --no-banner --log-level warn "$(git rev-parse --show-toplevel)"; then
+    echo "❌ gitleaks が秘密らしい値を検出しました。commit を中止します。"; exit 1
+  fi
+fi
+# --- 秘密の値そのものの照合（2026-11-08・rikkama-platform 05/159）------------------
+# gitleaks は形で探すので、接頭辞の無い本物の値を見逃す。手元の秘密の置き場所（各 .env・本番の .env の退避・
+# ~/.aws/credentials 等）の値そのものと、commit する内容を照合する。本体は開発機の ~/.claude/hooks/secret_values.py。
+# bypass: SKIP_SECRET_VALUE_CHECK=1
+__SV="${HOME}/.claude/hooks/secret_values.py"
+if [ "${SKIP_SECRET_VALUE_CHECK:-}" != "1" ] && [ -f "$__SV" ]; then
+  python3 "$__SV" --repo "$(git rev-parse --show-toplevel)" --staged
+  __rc=$?
+  if [ $__rc -ne 0 ]; then
+    [ $__rc -eq 1 ] && echo "❌ commit する内容に秘密の値があります。値を消して env 経由で読む形にしてください。" \
+                    || echo "❌ 秘密の値の照合が判定できませんでした（python3 $__SV --self-test で確認）。"
+    exit 1
+  fi
+fi
+exit 0
