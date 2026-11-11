@@ -76,12 +76,12 @@ nuits_jp（NAKAMURA Atsushi）さんの X の記事「[AI専用ダッシュボ�
 
 ![5.2 インチのゲージ型の画面（見本の値）](docs/images/gauge-1280x720.png)
 
-Fable 週次を見なくてよいときは、5 時間と週次の 2 つだけを、太い横棒で出す画面（`--theme pace`）にできます。この Mac では、3.5 インチの 1 台をこの画面にしています（5.2 インチ向けに作り、3.5 インチでは高さの比で縮めて描きます）。
+利用枠の 2 つだけを太い横棒で出す画面（`--theme pace`）にもできます。この Mac では、3.5 インチの 1 台をこの画面にしています（5.2 インチ向けに作り、3.5 インチでは高さの比で縮めて描きます）。
 
-- 上の段が 5 時間、下の段が週次です。2 本の棒は同じ幅・同じ左端なので、棒の端の位置で 2 つを比べられます。名前は棒の真上の左、数字は右上に、同じ高さの線に載せて出します。下の行は左にリセットの日時、右に残り時間です
+- 上の段が Fable の週次、下の段が全モデルの週次です（Ultra には 5 時間の枠が無く、Fable の週次の枠があるため。どの枠をどの段に出すかは `pace.ORDER`）。見出しは「Claude Code Ultra」です（`pace.TITLE`）。2 本の棒は同じ幅・同じ左端なので、棒の端の位置で 2 つを比べられます。名前は棒の真上の左、数字は右上に、同じ高さの線に載せて出します。下の行は左にリセットの日時、右に残り時間です
 - Apple の Human Interface Guidelines の [Gauges](https://developer.apple.com/design/human-interface-guidelines/gauges)（直線の容量ゲージ）を手本にしました
 
-![5時間と週次の 2 つを出す 5.2 インチの画面（見本の値）](docs/images/pace-1280x720.png)
+![Fable の週次と週次の 2 つを出す 5.2 インチの画面（見本の値）](docs/images/pace-1280x720.png)
 
 ## 対応機種
 
@@ -221,7 +221,7 @@ scripts/install-launch-agent.sh --device 5.2 --gemini            # 常駐に登�
 
 **ロゴの画像はこのリポジトリに入れていません。**Anthropic の [Trademark Guidelines](https://www.anthropic.com/legal/trademark-guidelines)（2024-08-01 発効）は、ロゴなどの商標を、Anthropic が許可し事前に承認した資料でだけ使えるとし、色・比率などの改変も認めていません。Google の [商標の指針](https://partnermarketinghub.withgoogle.com/brands/google/trademarks-and-terms/trademark-guidelines-for-proper-usage/) も、Google が承認した素材だけを使うこと、製品のアイコンをまねないことを求めています。どちらにも、個人で使う場合の例外は書かれていません。アイコンを使うときは画像を自分で用意し、手元のディスプレイに出すだけにしてください。ロゴの写った画面の写真や画像を公開するときは、各社の指針に従ってください。README の画像は `--icons` を付けずに作っています。
 
-同じフォルダに `reset.png`（白一色・背景透明）を置くと、5 時間と週次の横棒の画面（`--theme pace`）で、「リセット」の文字の代わりにその記号を時刻の左に出します（無ければ文字のまま）。この Mac では、macOS に内蔵の SF Symbols の `arrow.counterclockwise` を書き出して使っています。**この画像もリポジトリに入れていません。**Xcode and Apple SDKs Agreement の 2.10「System-Provided Images」は、SF Symbols などを、Apple の製品のそのシステムで動くアプリを作る目的にだけ使用を許しているためです。
+同じフォルダに `reset.png`（白一色・背景透明）を置くと、2 つを太い横棒で出す画面（`--theme pace`）で、「リセット」の文字の代わりにその記号を時刻の左に出します（無ければ文字のまま）。この Mac では、macOS に内蔵の SF Symbols の `arrow.counterclockwise` を書き出して使っています。**この画像もリポジトリに入れていません。**Xcode and Apple SDKs Agreement の 2.10「System-Provided Images」は、SF Symbols などを、Apple の製品のそのシステムで動くアプリを作る目的にだけ使用を許しているためです。
 
 ## サーバーの状態の画面（monitor）
 

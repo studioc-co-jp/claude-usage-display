@@ -587,6 +587,14 @@ scripts/uninstall-launch-agent.sh                                 # 自動起動
 - **件数の数字は変えていない**（ふだんは白、警報の条件を満たした時間があるときだけ赤）。「1 件以上なら数字も赤」の見本を見せたが、ユーザーが「件数の数字は白のままでいい」と答えた
 - テスト `test_counter_rows_show_the_total_and_red_bars_for_alarmed_hours` を書き直した（警報の時間とその前の時間の棒が、どちらも赤）。README の説明と `monitor-1280x720.png` も直した
 
+### 4-35. 利用枠の画面の上段を Fable の週次にし、見出しを「Claude Code Ultra」にした（2026-11-11）
+
+- **ユーザーの指示**: 「Ultra 継続することにしたので、上段は Fable にしようと思うんだけど Ultra も Fable は制限あるんだっけ？」、続けて「ヘッダーの文字を Claude Code Ultra にしよう」。§4-28 の「Ultra は解約して Max に戻る」予定は取りやめになった
+- **調べたこと**: 公式の記事「What is the Ultra plan?」（https://support.claude.com/en/articles/17728952-what-is-the-ultra-plan 、2026-11-11 に読んだ）に "Ultra plans have a weekly usage limit that applies across all models, and a separate weekly limit for Fable." とある。利用枠の API（2026-11-11 17:50:52）は `weekly_all`（46%・`is_active` true・11/16 10:00 リセット）と `weekly_scoped`（Fable。0%・`is_active` false・同じ時刻）で、`session`（5 時間）は無かった
+- **見本**: いまの値で、上段 5時間（「--」）のいまの画面と、上段 Fable週次（0%）・下段 週次（46%）を並べて見せ、**ユーザーが上段 Fable週次・下段 週次を選んだ**
+- **入れたこと**: `pace.ORDER = (2, 1)`（`snapshot.meters` の 2 が Fable週次）。`snapshot` にその番号の枠が無ければ、`labels` の名前で「--」の段にする（それまでは番号の無い snapshot で落ちた）。見出しの名前は `pace.TITLE = "Claude Code Ultra"`（プランは API の応答から読まず、定数に書く）。`usage.parse_usage` の並びと、5 時間の枠の見張り（`Runner._watch_session`。無いことをログに残す）は変えていない。テストは `test_fable_is_on_top_and_weekly_below`・`test_title_is_claude_code_ultra` を足し、ほかを Fable の段で確かめる形に直した。README・CLAUDE.md・`--theme` の説明・README の画像も直した
+- **同じ日に見つかったこと**（ユーザーに報告した）: 3 つの常駐のログ（`~/Library/Logs/claude-usage-display*.log`）が 11/8 01:32 ごろにゴミ箱へ移され、その後ゴミ箱を空にして消えていた（常駐は消えたファイルに書き続けていた。`lsof` で確かめた）。アイコンのフォルダ（`~/Library/Application Support/claude-usage-display/`。`claude.png`・`reset.png`・`apple.png`・サイトのロゴ）もフォルダごと消え、ゴミ箱にも無かった。Claude のセッションの記録でこれらに触れていたのは 2 件で、どちらも読んだだけだった。常駐は起動のときにアイコンを読むので画面は変わっていなかったが、起動し直すと、サーバーの状態の常駐はロゴが無いため「logo の画像がありません」で起動しない。**ユーザーが Time Machine で戻すことを選んだ**（最新の世代は 11/11 13:53。ここからはマウントされておらず読めなかった）。戻るまで、常駐は起動し直さない
+
 ## 5. 残っている作業（上から順に）
 
 1〜5 は 2026-10-05 に終えた（README.md、CLAUDE.md、requirements.txt と .gitignore、自動起動の作成と登録、git の初期化と push）。

@@ -1,9 +1,11 @@
-"""5時間と週次の 2 つを太い横棒で出す画面（``--theme pace``）。5.2 インチ向けに作った（2026-11-03）。
+"""利用枠の 2 つを太い横棒で出す画面（``--theme pace``）。5.2 インチ向けに作った（2026-11-03）。
 
-ユーザーが Fable を使っていないので 2 項目にし、見せ方を見本の 3 案から選んだ（「案 2」。``docs/handover.md`` §4-24）。
+最初は 5時間と週次の 2 項目にし（ユーザーが Fable を使っていなかった）、見せ方を見本の 3 案から選んだ（「案 2」。
+``docs/handover.md`` §4-24）。
 
 - 上下 2 段に、Apple の Gauges の直線の容量ゲージ（値の位置まで塗る）を太い横棒で置く。2 本は同じ幅・同じ左端なので、
-  棒の端の位置で 2 つを比べられる。上が 5時間、下が週次（2026-11-04 に入れ替え、2026-11-06 にユーザーの指示で戻した）
+  棒の端の位置で 2 つを比べられる。上が Fable の週次、下が全モデルの週次（``ORDER``。2026-11-11、Ultra を続けることに
+  したユーザーの指示で、5 時間の枠の段を Fable の週次に替えた。Ultra には 5 時間の枠が無く、Fable の週次の枠がある）
 - 名前は棒の真上の左、数字は右上に（% は小さく灰色）。名前と数字は同じ基準線に載せる。下の行は、左にリセットの日時、
   右に残り時間
 - 名前の pace は、最初は棒の上に枠の時間の経過の目印（と名前の右に「経過 N%」）を出していたことから。同じ日に、
@@ -31,7 +33,7 @@ MARGIN = 60          # 左右の余白
 # 5時間と週次の間を広げた（約 15→27 px（3.5 インチ）。同日、ユーザーの指示「5時間と週次を隙間を空けたい」）。
 # 1 段目を 84→76 に上げ、2 段目を 398→412 に下げ、下の行を 290→284 に上げて画面の下に収めた
 ROWS = (76, 412)     # 2 段の上端
-ORDER = (0, 1)       # 上の段から順に、どの枠を出すか（snapshot.meters の番号。0 が 5時間、1 が週次）
+ORDER = (2, 1)       # 上の段から順に、どの枠を出すか（snapshot.meters の番号。0 が 5時間、1 が週次、2 が Fable週次）
 # 名前は数字と同じ基準線に載せ、棒の真上に置く（2026-11-04、ユーザーの指示「5時間・週次のテキストをバーの真上に」。
 # 見本の 2 案から選んだ。70→122。3.5 インチで、名前と棒の間は 35→12 px で、棒と下の行の間（14〜15 px）とほぼ同じ）
 NAME = (122, 56)     # 名前の基準線（段の上端から）・大きさ
@@ -48,6 +50,9 @@ RESET_GAP = 0.3      # 記号と時刻の間（同じく比）
 # そろえる（2026-11-03 ユーザーの指示。ゲージ型の画面の 3.5 インチの既定は 13 で、並べると小さく見えた）。
 # 5.2 インチでは 36 px で、それまでと同じ
 STAMP = 16
+# 見出しの名前。2026-11-11、Ultra を続けることにしたユーザーの指示で「Claude Code」から変えた（プランは API の応答から
+# 読まず、ここに書く）
+TITLE = "Claude Code Ultra"
 
 
 def _reset_text(when: str) -> str:
@@ -57,14 +62,17 @@ def _reset_text(when: str) -> str:
 def render(snapshot: Snapshot | None, now: datetime, status: str | None = None,
            labels: tuple[str, ...] = ("5時間", "週次", "Fable週次"),
            size: tuple[int, int] = (1280, 720), icons: dict[str, Image.Image] | None = None) -> Image.Image:
-    """``snapshot`` の先頭の 2 つ（5時間・週次）を、``ORDER`` の順に描く。引数はゲージ型の画面（``gauge.render``）と同じ。"""
+    """``snapshot`` の枠のうち 2 つを、``ORDER`` の順に描く。引数はゲージ型の画面（``gauge.render``）と同じ。
+
+    ``snapshot`` にその番号の枠が無ければ、``labels`` の名前で値の無い（「--」の）段にする。
+    """
     layout = gauge.layout_for(size)
     s = layout.height / HEIGHT
     sized = lambda value: round(value * s)  # noqa: E731
     width = layout.width
     left, right = MARGIN * s, width - MARGIN * s
-    source = snapshot.meters if snapshot else tuple(Meter(label, None, None) for label in labels)
-    meters = tuple(source[i] for i in ORDER)
+    source = snapshot.meters if snapshot else ()
+    meters = tuple(source[i] if i < len(source) else Meter(labels[i], None, None) for i in ORDER)
 
     shapes = gauge._Shapes(layout)
     for meter, top in zip(meters, ROWS):
@@ -83,7 +91,7 @@ def render(snapshot: Snapshot | None, now: datetime, status: str | None = None,
 
     image = shapes.finish()
     draw = ImageDraw.Draw(image)
-    gauge._header(image, draw, layout, gauge.HEADER_BASELINE, "Claude Code", snapshot, status,
+    gauge._header(image, draw, layout, gauge.HEADER_BASELINE, TITLE, snapshot, status,
                   (icons or {}).get("claude"), STAMP)
     # 下の行（リセットと残り時間）は、2 段とも左右の間に LINE_GAP を残して収まる大きさにそろえる。寸法を高さの比で
     # 縮めるので、横の狭い 3.5 インチ（3:2）では 50 のままだと週次の日時と残り時間がくっついた（2026-11-03）。

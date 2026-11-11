@@ -19,7 +19,8 @@ def near(pixel, color, tolerance=12):
     return all(abs(a - b) <= tolerance for a, b in zip(pixel, color))
 
 
-SESSION, WEEKLY = pace.ORDER.index(0), pace.ORDER.index(1)  # 5時間・週次を出す段（0 が上）
+FABLE, WEEKLY = pace.ORDER.index(2), pace.ORDER.index(1)  # Fable週次・週次を出す段（0 が上）
+NAMES = ("5時間", "週次", "Fable週次")  # snapshot.meters の番号ごとの名前
 
 
 def bar_row(index):
@@ -29,23 +30,37 @@ def bar_row(index):
 
 class PaceTest(unittest.TestCase):
     def test_bars_are_filled_to_the_percent(self):
-        image = pace.render(snapshot(), NOW, size=SIZE)
+        image = pace.render(snapshot(scoped=26.0), NOW, size=SIZE)
         self.assertEqual(image.size, SIZE)
         left, right = pace.MARGIN, SIZE[0] - pace.MARGIN
-        y = bar_row(SESSION)
+        y = bar_row(FABLE)
         blue = gauge.layout_for(SIZE).blue
         self.assertTrue(near(image.getpixel((round(left + (right - left) * 0.20), y)), blue))  # 26% の手前は塗る
         self.assertFalse(near(image.getpixel((round(left + (right - left) * 0.40), y)), blue))  # 26% より先は地
         self.assertTrue(near(image.getpixel((round(left + (right - left) * 0.5), bar_row(WEEKLY))), gauge.ORANGE))  # 74%
 
-    def test_session_is_on_top_and_weekly_below(self):
-        # 2026-11-06、「5時間、週次に並び替えて」（ユーザーの指示。2026-11-04 に上を週次にしていたのを戻した）
-        self.assertEqual((SESSION, WEEKLY), (0, 1))
-        image = pace.render(snapshot(), NOW, size=(480, 320))
+    def test_fable_is_on_top_and_weekly_below(self):
+        # 2026-11-11、Ultra を続けることにしたユーザーの指示で、上の段を 5時間から Fable の週次に替えた
+        # （それまでは 2026-11-06 の「5時間、週次に並び替えて」で、上が 5時間・下が週次）
+        self.assertEqual((FABLE, WEEKLY), (0, 1))
+        image = pace.render(snapshot(session=99.0, scoped=26.0), NOW, size=(480, 320))
         s = 320 / pace.HEIGHT
         x = round((pace.MARGIN + (1280 - 2 * pace.MARGIN) * 0.5) * 480 / 1280)  # 26% より先、74% より手前
-        self.assertFalse(near(image.getpixel((x, round(bar_row(0) * s))), gauge.ORANGE))  # 上の段は 5時間の 26%
-        self.assertTrue(near(image.getpixel((x, round(bar_row(1) * s))), gauge.ORANGE))  # 下の段は週次の 74%
+        top, bottom = image.getpixel((x, round(bar_row(0) * s))), image.getpixel((x, round(bar_row(1) * s)))
+        self.assertFalse(near(top, gauge.ORANGE) or near(top, gauge.RED))  # 上の段は Fable の 26%（5時間の 99% ではない）
+        self.assertTrue(near(bottom, gauge.ORANGE))  # 下の段は週次の 74%
+
+    def test_title_is_claude_code_ultra(self):
+        # 2026-11-11、「ヘッダーの文字を Claude Code Ultra にしよう」（ユーザーの指示）
+        self.assertEqual(pace.TITLE, "Claude Code Ultra")
+        ultra = pace.render(snapshot(), NOW, size=SIZE)
+        try:
+            pace.TITLE = "Claude Code"
+            plain = pace.render(snapshot(), NOW, size=SIZE)
+        finally:
+            pace.TITLE = "Claude Code Ultra"
+        header = [(x, y) for x in range(0, SIZE[0] // 2, 2) for y in range(0, 70, 2)]
+        self.assertTrue(any(ultra.getpixel(p) != plain.getpixel(p) for p in header))
 
     def test_no_elapsed_mark_or_text(self):
         # 2026-11-03、「時間経過の表記と縦棒は不要」（ユーザーの指示）。棒の上にも名前の右にも白い字・線を出さない
@@ -55,12 +70,12 @@ class PaceTest(unittest.TestCase):
             band = [image.getpixel((x, y)) for x in range(left, right, 4)
                     for y in range(top + pace.BAR[0] - 14, top + pace.BAR[1] + 14, 2)]
             self.assertFalse(any(min(p) > 200 for p in band))
-            name_end = left + font(pace.NAME[1], 6).getlength("5時間") + 10
+            name_end = left + font(pace.NAME[1], 6).getlength(NAMES[pace.ORDER[pace.ROWS.index(top)]]) + 10
             beside = [image.getpixel((x, top + pace.NAME[0] - 10)) for x in range(round(name_end), round(name_end) + 300)]
             self.assertTrue(all(p == gauge.BACKGROUND for p in beside))
 
-    def test_only_session_and_weekly_are_drawn(self):
-        # Fable を使っていないので 2 項目だけ（2026-11-03 ユーザーの指示）。3 段目の位置は黒のまま
+    def test_only_two_rows_are_drawn(self):
+        # 2 項目だけ（2026-11-03 ユーザーの指示）。3 段目の位置は黒のまま
         image = pace.render(snapshot(), NOW, size=SIZE)
         below = [image.getpixel((x, 714)) for x in range(pace.MARGIN, SIZE[0] - pace.MARGIN, 10)]
         self.assertTrue(all(p == gauge.BACKGROUND for p in below))
@@ -92,7 +107,7 @@ class PaceTest(unittest.TestCase):
 
     def test_missing_values_and_fetch_errors_still_render(self):
         gone = Snapshot((Meter("5時間", None, None), Meter("週次", 9, NOW + timedelta(days=6))), NOW)
-        image = pace.render(gone, NOW, "5時間の枠がなくなりました", size=SIZE)
+        image = pace.render(gone, NOW, "取得の間隔を空けています", size=SIZE)  # Fable週次の枠も無い（「--」で描く）
         badge = gauge._badge(gauge.layout_for(SIZE), gauge.HEADER_BASELINE)
         self.assertTrue(near(image.getpixel((round(badge[0]) - 10, round(badge[1]))), gauge.ORANGE, 40))  # 「!」の横
         self.assertEqual(pace.render(None, NOW, "通信できません", size=SIZE).size, SIZE)
@@ -100,7 +115,7 @@ class PaceTest(unittest.TestCase):
     def test_long_texts_do_not_overlap(self):
         # 名前は数字「100%」の左、下の行は左右で重ならない
         name, unit, number = font(pace.NAME[1], 6), gauge.rounded(pace.UNIT), gauge.rounded(pace.NUMBER[1])
-        name_end = pace.MARGIN + name.getlength("5時間")
+        name_end = pace.MARGIN + max(name.getlength(NAMES[i]) for i in pace.ORDER)
         number_start = SIZE[0] - pace.MARGIN - unit.getlength("%") - pace.UNIT_GAP - number.getlength("100")
         self.assertLess(name_end + 40, number_start)
         line = font(pace.LINE[1], 6)
@@ -111,7 +126,8 @@ class PaceTest(unittest.TestCase):
     def test_bottom_line_keeps_a_gap_on_the_35_inch_display(self):
         # 2026-11-03、3.5 インチ（横の狭い 3:2）で週次の日時と残り時間がくっついた。字を縮めて間を残す
         long = Snapshot((Meter("5時間", 26.0, NOW + timedelta(hours=4, minutes=59)),
-                         Meter("週次", 74.0, NOW + timedelta(days=6, hours=23, minutes=59))), NOW)
+                         Meter("週次", 74.0, NOW + timedelta(days=6, hours=23, minutes=59)),
+                         Meter("Fable週次", 26.0, NOW + timedelta(days=6, hours=23, minutes=59))), NOW)
         image = pace.render(long, NOW, size=(480, 320))
         s = 320 / pace.HEIGHT
         row = pace.ROWS[WEEKLY]
@@ -152,12 +168,13 @@ class PaceTest(unittest.TestCase):
         s = 320 / pace.HEIGHT
         with_mark = pace.render(snapshot(), NOW, size=(480, 320), icons=icons)
         plain = pace.render(snapshot(), NOW, size=(480, 320))
-        baseline = round((pace.ROWS[SESSION] + pace.LINE[0]) * s)  # 5時間の段（「リセット済み」も 5時間で確かめる）
+        baseline = round((pace.ROWS[FABLE] + pace.LINE[0]) * s)  # Fable週次の段（「リセット済み」も同じ段で確かめる）
         row = range(round(pace.MARGIN * s), round(pace.MARGIN * s) + 14)
         band = range(baseline - 14, baseline)
         self.assertTrue(any(near(with_mark.getpixel((x, y)), (0, 255, 0), 40) for x in row for y in band))
         self.assertFalse(any(near(plain.getpixel((x, y)), (0, 255, 0), 40) for x in row for y in band))
         # 「リセット済み」は文字のまま（記号を出さない）
-        done = Snapshot((Meter("5時間", 26.0, NOW - timedelta(minutes=1)), Meter("週次", 74.0, NOW + timedelta(days=3))), NOW)
+        done = Snapshot((Meter("5時間", 26.0, NOW + timedelta(hours=1)), Meter("週次", 74.0, NOW + timedelta(days=3)),
+                         Meter("Fable週次", 26.0, NOW - timedelta(minutes=1))), NOW)
         image = pace.render(done, NOW, size=(480, 320), icons=icons)
         self.assertFalse(any(near(image.getpixel((x, y)), (0, 255, 0), 40) for x in row for y in band))
